@@ -3161,7 +3161,7 @@
 (defparameter halted-instr (make-instruction :opcode 0 :bytes 0 :cycles '(1 0) :asm '(:cpu "halted")
                                              :fun (lambda (cpu instr) (incr-clocks cpu instr))))
 (defun emu-single-op (cpu op)
-    (let ((instr (if (= (gbcpu-halted cpu) #x00) (if (= op #xcb) (get-cb-instruction cpu) (aref ops op)) (halted-intr))))
+    (let ((instr (if (= (gbcpu-halted cpu) #x00) (if (= op #xcb) (get-cb-instruction cpu) (aref ops op)) halted-instr)))
     (if (instruction-p instr)
       (progn (if (null (instruction-fun instr))
                (format t "Unable to run function for instruction ~X @ ~X~%" op (gbcpu-pc cpu))
