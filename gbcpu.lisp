@@ -7,23 +7,36 @@
 
 (defstruct gb
   (cpu (default-cpu) :type gbcpu)
-  (mmu (make-gbmmu)))
+  (mmu (make-gbmmu))
+  (ppu (make-gbppu))
+  (input (make-gbinput))
+  (stopped? nil :type boolean))
+
+(defstruct gbinput
+  (down   nil :type boolean)
+  (up     nil :type boolean)
+  (left   nil :type boolean)
+  (right  nil :type boolean)
+  (a      nil :type boolean)
+  (b      nil :type boolean)
+  (start  nil :type boolean)
+  (select nil :type boolean))
 
 (defstruct gbcpu
-  (a 0 :type (unsigned-byte 8))
-  (b 0 :type (unsigned-byte 8))
-  (c 0 :type (unsigned-byte 8))
-  (d 0 :type (unsigned-byte 8))
-  (e 0 :type (unsigned-byte 8))
-  (h 0 :type (unsigned-byte 8))
-  (l 0 :type (unsigned-byte 8))
+  (a  0 :type (unsigned-byte 8))
+  (b  0 :type (unsigned-byte 8))
+  (c  0 :type (unsigned-byte 8))
+  (d  0 :type (unsigned-byte 8))
+  (e  0 :type (unsigned-byte 8))
+  (h  0 :type (unsigned-byte 8))
+  (l  0 :type (unsigned-byte 8))
   (pc 0 :type (unsigned-byte 16))
   (sp 0 :type (unsigned-byte 16))
   (clock 0)
   (div-clock 0 :type (unsigned-byte 16))
   (int-ena 0 :type (unsigned-byte 1))
   (halted 0 :type (unsigned-byte 1))
-  flags)
+  flags (make-gbflags))
 
 (defstruct gbflags
   (z 0 :type (unsigned-byte 1))
@@ -35,6 +48,12 @@
   (mem (make-array #x10000 :initial-element 0 :element-type '(unsigned-byte 8)))
   (bios (make-bios))
   (is-bios? t :type boolean))
+
+(defstruct gbppu
+  (framebuffer (static-vectors:make-static-vector (* 160 144 3)))
+  (framebuffer-a (static-vectors:make-static-vector (* 160 144 4)))
+  (cycles 0)
+  (cur-line 0))
 
 (defstruct instruction
   (opcode #x00)
@@ -51,9 +70,6 @@
   (make-array #x100 :initial-contents (read-rom-data-from-file "DMG_ROM.bin")))
 
 (defun replace-memory-with-rom (mmu file) (replace (gbmmu-mem mmu) (read-rom-data-from-file file)))
-
-(defun default-cpu () (make-gbcpu :flags (make-gbflags)))
-(defun default-mmu () (make-gbmmu))
 
 ;; TODO for half carry during additions we know that if the bottom nibble is less than either
 ;; argument then we had a half carry. It could ADC also if we added the carry to the lesser arg.
@@ -3242,30 +3258,139 @@
 
 (defconstant CPU_SPEED 4194304)
 
+(defconstant COLORS #(255 255 255
+                      192 192 192
+                      96 96 96
+                       0  0  0))
+
+(defun make-signed-from-unsigned (unsign-byte)
+  (if (< unsign-byte 128)
+      unsign-byte
+      (logior unsign-byte (- (mask-field (byte 1 7) #xff)))))
+
+(defun update-ppu-framebuffer (ppu mmu)
+  (let* ((row (gbppu-cur-line ppu))
+         (scroll-y (read-memory-at-addr mmu #xff42))
+         (scroll-x (read-memory-at-addr mmu #xff43))
+         (lcdc (read-memory-at-addr mmu #xff40))
+         (tilemap-loc (if (= (logand lcdc #x08) #x08) #x9c00 #x9800))
+         (tiledata-loc (if (= (logand lcdc #x10) #x10) #x8000 #x9000)))
+    ;(format t "tilmap @~X, tildata @~X~%" tilemap-loc tiledata-loc)
+    (when (< row 144)
+    (loop for col from 0 to 159
+      do
+      ;(format t "~A ~A~%" row col)
+      (let* ((yoffset (+ row scroll-y))
+             (xoffset (+ col scroll-x))
+             (addr (+ tilemap-loc (* (floor yoffset 8) 32) (floor xoffset 8)))
+            (tile-no (if (= tiledata-loc #x8000)
+                       (read-memory-at-addr mmu addr)
+                       (make-signed-from-unsigned (read-memory-at-addr mmu addr))))
+            (colorbitpos (- 7 (mod xoffset 8)))
+            (color-addr (+ tiledata-loc (* tile-no #x10) (* (mod yoffset 8) 2)))
+            (colorbyte1 (read-memory-at-addr mmu color-addr))
+            (colorbyte2 (read-memory-at-addr mmu (+ color-addr 1)))
+            (colorval (+
+                         (logand (ash colorbyte1 (- 0 colorbitpos)) #x01)
+                         (* (logand (ash colorbyte2 (- 0 colorbitpos)) #x01) 2))))
+        ;(format t "tilemap addr ~X, tile-no ~X, color-addr ~X, colorval ~X~%" addr tile-no color-addr colorval)
+        (let ((palette-col (logand (ash (read-memory-at-addr mmu #xff47) (* colorval -2)) 3)))
+        (setf (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3))) (aref COLORS (* palette-col 3))
+              (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3) 1)) (aref COLORS (+ (* palette-col 3) 1))
+              (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3) 2)) (aref COLORS (+ (* palette-col 3) 2))
+              ;(aref (gbppu-framebuffer-a ppu) (+ (* row 144 4) (* col 4) 3)) #xff
+              )))))
+    (if (> row 153) (setf (gbppu-cur-line ppu) 0) (incf (gbppu-cur-line ppu)))
+    (write-memory-at-addr mmu #xff44 (gbppu-cur-line ppu))))
+
+(defun step-ppu (ppu cpu mmu renderer texture)
+  (incf (gbppu-cycles ppu) (gbcpu-clock cpu))
+  (when (> (gbppu-cycles ppu) 2)
+      (update-ppu-framebuffer ppu mmu)
+      (setf (gbppu-cycles ppu) 0))
+  (when (>= (gbppu-cur-line ppu) 144)
+    (sdl2:update-texture
+      texture
+      (cffi:null-pointer)
+      (static-vectors:static-vector-pointer
+        (gbppu-framebuffer ppu)) (* 160 3))
+    (sdl2:render-copy renderer texture)
+    (sdl2:render-present renderer)
+    (set-interrupt-flag mmu 0)))
+
 (defparameter *out* ())
-(defun emu-main (cpu mmu)
-  (loop for o = (read-memory-at-addr mmu (gbcpu-pc cpu))
-        while (< (gbcpu-pc cpu) #xe000)
-        ;while (not (= (gbcpu-pc cpu) #xc2e4))
-        ;while (not (= o #xca))
-        for instr  = (emu-single-op cpu mmu o)
-        while instr
-        do (when (instruction-p instr)
-             (format t "~X: ~A --> PC=~X~%" (instruction-opcode instr) (instruction-asm instr) (gbcpu-pc cpu)))
-        (if (= (read-memory-at-addr mmu #xff02) #x81)
-          (progn
-            (setf *out* (cons (code-char (read-memory-at-addr mmu #xff01)) *out*))
-            (write-memory-at-addr #xff02 0)))
-        (if (= (gbcpu-pc cpu) #x100) (setf (gbmmu-is-bios? mmu) nil))
-        (handle-timers cpu mmu)
-        (handle-interrupts cpu mmu)))
+(defun emu-main (gb)
+  (let ((cpu (gb-cpu gb))
+        (mmu (gb-mmu gb))
+        (ppu (gb-ppu gb))
+        (input (gb-input gb)))
+  (sdl2:with-init (:everything)
+    (sdl2:with-window (win :title "SDL2 Renderer API Demo" :flags '(:shown))
+      (sdl2:with-renderer (renderer win)
+				(let ((texture (sdl2:create-texture renderer :rgb24 :streaming 160 144)))
+          (sdl2:with-event-loop (:method :poll)
+            (:keydown (:keysym keysym)
+              (setf (gb-stopped? gb) nil)
+              (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-w)
+                (set-interrupt-flag mmu 4)
+                (setf (gbinput-up input) t))
+              (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-a)
+                (set-interrupt-flag mmu 4)
+                (setf (gbinput-left input) t))
+              (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-s)
+                (set-interrupt-flag mmu 4)
+                (setf (gbinput-down input) t))
+              (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-d)
+                (set-interrupt-flag mmu 4)
+                (setf (gbinput-right input) t))
+              (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-space)
+                (set-interrupt-flag mmu 4)
+                (setf (gbinput-start input) t)))
+            (:keyup (:keysym keysym)
+             (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-escape)
+               (sdl2:push-event :quit))
+              (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-w)
+                (set-interrupt-flag mmu 4)
+                (setf (gbinput-up input) nil))
+              (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-a)
+                (set-interrupt-flag mmu 4)
+                (setf (gbinput-left input) nil))
+              (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-s)
+                (set-interrupt-flag mmu 4)
+                (setf (gbinput-down input) nil))
+              (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-d)
+                (set-interrupt-flag mmu 4)
+                (setf (gbinput-right input) nil))
+              (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-space)
+                (setf (gbinput-start input) nil)))
+            (:idle ()
+              (when (not (gb-stopped? gb))
+                (let (( instr (emu-single-op cpu mmu)))
+                  (if (not instr) (sdl2:push-event :quit))
+                  ;(when (instruction-p instr)
+                     ;(format t "~X: ~A --> PC=~X~%" (instruction-opcode instr) (instruction-asm instr) (gbcpu-pc cpu)))
+                  (if (= (read-memory-at-addr mmu #xff02) #x81)
+                    (progn
+                      (setf *out* (cons (code-char (read-memory-at-addr mmu #xff01)) *out*))
+                      (write-memory-at-addr mmu #xff02 0)))
+                  (if (= (gbcpu-pc cpu) #x100) (setf (gbmmu-is-bios? mmu) nil))
+                  (step-ppu ppu cpu mmu renderer texture)
+                  (handle-timers cpu mmu)
+                  (handle-interrupts cpu mmu))))
+            (:quit () t))))))))
 
-;(load "gbcpu.lisp")
 
-(defparameter *cpu* (default-cpu))
-(defparameter *mmu* (default-mmu))
+(defparameter *gb* (make-gb))
 
-;(defparameter loaded-rom  "red.gb")
+(defun reset-gb ()
+  (setf *gb* (make-gb))
+  (replace-memory-with-rom (gb-mmu *gb*) loaded-rom)
+  ;(write-memory-at-addr mmu #xff44 #x90)
+  )
+
+(defun dump-mem-region (start end)
+  (loop for a from start to end
+        collect (read-memory-at-addr (gb-mmu *gb*) a)))
 
 (defun dump-blargg-output ()
   (dump-mem-region #x9800 #x9BFF))
@@ -3289,11 +3414,9 @@
 ;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/10-bit ops.gb") ; PASSED
 ;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/11-op a,(hl).gb")
 
-(replace-memory-with-rom *mmu* loaded-rom)
+(replace-memory-with-rom (gb-mmu *gb*) loaded-rom)
 
-(write-memory-at-addr #xff44 #x90)
+;(write-memory-at-addr mmu #xff44 #x90)
 
-(defun run () (emu-main *cpu* *mmu*))
-
-(emu-main *cpu* *mmu*)
+(defun run () (emu-main *gb*))
 
