@@ -61,8 +61,8 @@
   (setf (gbflags-z flags) (if (= res #x00) #x01 #x00)
         (gbflags-c flags) (if (> res #xff) #x01 #x00)))
 
-(defun write-memory-at-addr (addr val)
-  (setf (aref (gbmmu-mem *mmu*) addr) val))
+(defun write-memory-at-addr (mmu addr val)
+  (setf (aref (gbmmu-mem mmu) addr) val))
 (defun read-memory-at-addr (mmu addr)
   (if (< addr #x100)
     (if (gbmmu-is-bios? mmu)
@@ -104,7 +104,6 @@
     res))
 (defun decr-reg (cpu reg)
   (let ((res (if (= reg 0) 255 (- reg 1))))
-    (format t "~A - 1 = ~A~%" reg res)
     (setf (gbflags-z (gbcpu-flags cpu)) (if (= res #x00) #x01 #x00)
           (gbflags-n (gbcpu-flags cpu)) 1
           (gbflags-h (gbcpu-flags cpu)) (if (= (logand #x0f res) #xf) #x01 #x00))
@@ -128,19 +127,17 @@
   (incf (gbcpu-div-clock cpu) (cadr (instruction-cycles instr))))
 
 (defun get-new-addr-from-relative (addr b)
-  (let ((rel (if (< b 128)
-               b
-               (logior b (- (mask-field (byte 1 7) #xFF))))))
-    (format t "~X + ~X(~X) ~%" addr rel b)
-    (+ addr rel)))
+  (let* ((rel (make-signed-from-unsigned b))
+        (res (+ addr rel)))
+    (if (< res 0) (+ #x10000 res) res)))
 
 (defun add-signed-byte-to-sp (cpu b)
   (let* ((sp (gbcpu-sp cpu))
          (res (get-new-addr-from-relative sp b)))
     (setf (gbflags-z (gbcpu-flags cpu)) #x00
           (gbflags-n (gbcpu-flags cpu)) #x00
-          (gbflags-h (gbcpu-flags cpu)) (if (<= (logand res #x0f) (logand b #x0f)) #x01 #x00)
-          (gbflags-c (gbcpu-flags cpu)) (if (> res #xff) #x01 #x00))
+          (gbflags-h (gbcpu-flags cpu)) (if (> (+ (logand sp #x0f) (logand b #x0f)) #xf) #x01 #x00)
+          (gbflags-c (gbcpu-flags cpu)) (if (> (+ (logand sp #xff) (logand b #xff)) #xff) #x01 #x00))
     (logand res #xffff)))
 
 (defun and-op (cpu val1 val2)
@@ -168,41 +165,41 @@
 (defun add16 (cpu val1 val2)
   (let ((res (+ val1 val2)))
     (setf (gbflags-n (gbcpu-flags cpu)) #x00
-          (gbflags-h (gbcpu-flags cpu)) (if (<= (logand #xfff res) (logand #xfff val1)) #x01 #x00)
+          (gbflags-h (gbcpu-flags cpu)) (if (> (+ (logand #xfff val1) (logand #xfff val2)) #xfff) #x01 #x00)
           (gbflags-c (gbcpu-flags cpu)) (if (> res #xffff) #x01 #x00))
     (logand res #xffff)))
 
-(defun add (cpu val1 val2)
-  (let ((res (+ val1 val2)))
+(defun add (cpu val1 val2 &optional (c 0))
+  (let ((res (+ val1 val2 c)))
     (setf (gbflags-z (gbcpu-flags cpu)) (if (= (logand res #xff) #x00) #x01 #x00)
           (gbflags-n (gbcpu-flags cpu)) #x00
-          (gbflags-h (gbcpu-flags cpu)) (if (<= (logand #x0f res) (logand #x0f val1)) #x01 #x00)
+          (gbflags-h (gbcpu-flags cpu)) (if (> (+ (logand #x0f val1) (logand #x0f val2) c) #x0f) #x01 #x00)
           (gbflags-c (gbcpu-flags cpu)) (if (> res #xff) #x01 #x00))
     (logand res #xff)))
 (defun adc (cpu val1 val2)
-  (add cpu val1 (+ val2 (gbflags-c (gbcpu-flags cpu)))))
+  (add cpu val1 val2 (gbflags-c (gbcpu-flags cpu))))
 
-(defun sub (cpu val1 val2)
-  (let ((res (if (< val1 val2) (- (+ val1 #x100) val2) (- val1 val2))))
-    (format t "~A - ~A~%" val1 val2)
+(defun sub (cpu val1 val2 &optional (c 0))
+  (let* ((val2-with-c (+ val2 c))
+        (res (if (< val1 val2-with-c) (- (+ val1 #x100) val2-with-c) (- val1 val2-with-c))))
     (setf (gbflags-z (gbcpu-flags cpu)) (if (= (logand res #xff) #x00) #x01 #x00)
           (gbflags-n (gbcpu-flags cpu)) 1
-          (gbflags-h (gbcpu-flags cpu)) (if (< (logand #x0f val1) (logand #x0f val2)) #x01 #x00)
-          (gbflags-c (gbcpu-flags cpu)) (if (< val1 val2) #x01 #x00))
+          (gbflags-h (gbcpu-flags cpu)) (if (< (logand #x0f val1) (+ (logand #x0f val2) c)) #x01 #x00)
+          (gbflags-c (gbcpu-flags cpu)) (if (< val1 val2-with-c) #x01 #x00))
     (logand res #xff)))
 (defun sbc (cpu val1 val2)
-  (sub cpu val1 (+ val2 (gbflags-c (gbcpu-flags cpu)))))
+  (sub cpu val1 val2 (gbflags-c (gbcpu-flags cpu))))
 
 (defun cp-reg-with-val (cpu reg val)
   (sub cpu reg val))
 
 
-(defun do-call-at-addr (cpu addr)
-  (push-addr-on-stack cpu (gbcpu-pc cpu))
+(defun do-call-at-addr (cpu mmu addr)
+  (push-addr-on-stack cpu mmu (gbcpu-pc cpu))
   (setf (gbcpu-pc cpu) addr))
 
-(defun do-rst (cpu addr)
-  (push-addr-on-stack cpu (gbcpu-pc cpu))
+(defun do-rst (cpu mmu addr)
+  (push-addr-on-stack cpu mmu (gbcpu-pc cpu))
   (setf (gbcpu-pc cpu) addr))
 
 (defun do-jump (cpu addr)
@@ -225,13 +222,13 @@
                 :n  (logand (ash val -6) #x01)
                 :z  (logand (ash val -7) #x01)))
 
-(defun push-addr-on-stack (cpu addr)
+(defun push-addr-on-stack (cpu mmu addr)
   (let ((sp (gbcpu-sp cpu))
         (lsb (logand addr #xff))
         (msb (logand (ash addr -8) #xff)))
     (decf (gbcpu-sp cpu) 2)
-    (write-memory-at-addr (- sp 1) msb)
-    (write-memory-at-addr (- sp 2) lsb)))
+    (write-memory-at-addr mmu (- sp 1) msb)
+    (write-memory-at-addr mmu (- sp 2) lsb)))
 (defun pop-addr-from-stack (cpu mmu)
   (let* ((sp (gbcpu-sp cpu))
          (lsb (read-memory-at-addr mmu sp))
@@ -239,11 +236,11 @@
     (incf (gbcpu-sp cpu) 2)
     (logior lsb (ash msb 8))))
 
-(defun push-reg-pair-on-stack (cpu reg1 reg2)
+(defun push-reg-pair-on-stack (cpu mmu reg1 reg2)
   (let ((sp (gbcpu-sp cpu)))
     (decf (gbcpu-sp cpu) 2)
-    (write-memory-at-addr (- sp 1) reg1)
-    (write-memory-at-addr (- sp 2) reg2)))
+    (write-memory-at-addr mmu (- sp 1) reg1)
+    (write-memory-at-addr mmu (- sp 2) reg2)))
 
 
 (defparameter ops (make-array #x100 :initial-element nil))
@@ -263,7 +260,7 @@
                         :opcode #x02 :bytes 1 :cycles '(2 0) :asm '(:ld "(BC),A")
                         :fun (lambda (cpu mmu instr)
                                (let ((addr (get-address-from-reg-pair (gbcpu-b cpu) (gbcpu-c cpu))))
-                                 (write-memory-at-addr addr (gbcpu-a cpu))
+                                 (write-memory-at-addr mmu addr (gbcpu-a cpu))
                                  (incr-cpu-counters cpu instr)))))
 
 (setf (aref ops #x03) (make-instruction
@@ -296,8 +293,8 @@
                         :opcode #x08 :bytes 3 :cycles '(5 0) :asm '(:ld "(u16),SP")
                         :fun (lambda (cpu mmu instr)
                                (let ((addr (get-address-from-memory mmu (+ (gbcpu-pc cpu) 1))))
-                                 (write-memory-at-addr addr (logand (gbcpu-sp cpu) #xff))
-                                 (write-memory-at-addr (+ addr 1) (logand (ash (gbcpu-sp cpu) -8) #xff))
+                                 (write-memory-at-addr mmu addr (logand (gbcpu-sp cpu) #xff))
+                                 (write-memory-at-addr mmu (+ addr 1) (logand (ash (gbcpu-sp cpu) -8) #xff))
                                  (incr-cpu-counters cpu instr)))))
 (setf (aref ops #x09) (make-instruction
                         :opcode #x09 :bytes 1 :cycles '(2 0) :asm '(:add "HL,BC")
@@ -357,7 +354,7 @@
                         :opcode #x12 :bytes 1 :cycles '(2 0) :asm '(:ld "(DE),A")
                         :fun (lambda (cpu mmu instr)
                                (let ((addr (get-address-from-reg-pair (gbcpu-d cpu) (gbcpu-e cpu))))
-                                 (write-memory-at-addr addr (gbcpu-a cpu))
+                                 (write-memory-at-addr mmu addr (gbcpu-a cpu))
                                  (incr-cpu-counters cpu instr)))))
 (setf (aref ops #x13) (make-instruction
                         :opcode #x13 :bytes 1 :cycles '(2 0) :asm '(:inc "DE")
@@ -458,7 +455,7 @@
                         :opcode #x22 :bytes 1 :cycles '(2 0) :asm '(:ld "(HL+),A")
                         :fun (lambda (cpu mmu instr)
                                (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
-                                 (write-memory-at-addr addr (gbcpu-a cpu))
+                                 (write-memory-at-addr mmu addr (gbcpu-a cpu))
                                  (set-reg-pair-hl-to-val cpu (incr-reg-pair (gbcpu-h cpu) (gbcpu-l cpu)))
                                  (incr-cpu-counters cpu instr)))))
 (setf (aref ops #x23) (make-instruction
@@ -576,7 +573,7 @@
                         :opcode #x32 :bytes 1 :cycles '(2 0) :asm '(:ld "(HL-),A")
                         :fun (lambda (cpu mmu instr)
                                (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
-                                 (write-memory-at-addr addr (gbcpu-a cpu))
+                                 (write-memory-at-addr mmu addr (gbcpu-a cpu))
                                  (set-reg-pair-hl-to-val cpu (decr-reg-pair (gbcpu-h cpu) (gbcpu-l cpu)))
                                  (incr-cpu-counters cpu instr)))))
 (setf (aref ops #x33) (make-instruction
@@ -590,6 +587,7 @@
                         :opcode #x34 :bytes 1 :cycles '(3 0) :asm '(:inc "(HL)")
                         :fun (lambda (cpu mmu instr)
                                (write-memory-at-addr
+                                 mmu
                                  (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))
                                  (incr-reg cpu (get-byte-from-hl-address cpu mmu)))
                                (incr-cpu-counters cpu instr))))
@@ -598,6 +596,7 @@
                         :opcode #x35 :bytes 1 :cycles '(3 0) :asm '(:dec "(HL)")
                         :fun (lambda (cpu mmu instr)
                                (write-memory-at-addr
+                                 mmu
                                  (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))
                                  (decr-reg cpu (get-byte-from-hl-address cpu mmu)))
                                (incr-cpu-counters cpu instr))))
@@ -606,7 +605,7 @@
                         :fun (lambda (cpu mmu instr)
                                (let ((b (read-memory-at-addr mmu (+ (gbcpu-pc cpu) 1)))
                                      (addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
-                                 (write-memory-at-addr addr b)
+                                 (write-memory-at-addr mmu addr b)
                                  (incr-cpu-counters cpu instr)))))
 (setf (aref ops #x37) (make-instruction
                         :opcode #x37 :bytes 1 :cycles '(1 0) :asm '(:scf)
@@ -643,7 +642,7 @@
 (setf (aref ops #x3b) (make-instruction
                         :opcode #x3b :bytes 1 :cycles '(2 0) :asm '(:dec "SP")
                         :fun (lambda (cpu mmu instr)
-                               (let ((res (logand (- (gbcpu-sp cpu) 1) #xffff)))
+                               (let ((res (if (= (gbcpu-sp cpu) 0) #xffff (- (gbcpu-sp cpu) 1))))
                                  (setf (gbcpu-sp cpu) res)
                                  (incr-cpu-counters cpu instr)))))
 (setf (aref ops #x3c) (make-instruction
@@ -929,48 +928,49 @@
                         :opcode #x70 :bytes 1 :cycles '(2 0) :asm '(:ld "(HL),B")
                         :fun (lambda (cpu mmu instr)
                                (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
-                                 (write-memory-at-addr addr (gbcpu-b cpu))
+                                 (write-memory-at-addr mmu addr (gbcpu-b cpu))
                                  (incr-cpu-counters cpu instr)))))
 (setf (aref ops #x71) (make-instruction
                         :opcode #x71 :bytes 1 :cycles '(2 0) :asm '(:ld "(HL),C")
                         :fun (lambda (cpu mmu instr)
                                (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
-                                 (write-memory-at-addr addr (gbcpu-c cpu))
+                                 (write-memory-at-addr mmu addr (gbcpu-c cpu))
                                  (incr-cpu-counters cpu instr)))))
 (setf (aref ops #x72) (make-instruction
                         :opcode #x72 :bytes 1 :cycles '(2 0) :asm '(:ld "(HL),D")
                         :fun (lambda (cpu mmu instr)
                                (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
-                                 (write-memory-at-addr addr (gbcpu-d cpu))
+                                 (write-memory-at-addr mmu addr (gbcpu-d cpu))
                                  (incr-cpu-counters cpu instr)))))
 (setf (aref ops #x73) (make-instruction
                         :opcode #x73 :bytes 1 :cycles '(2 0) :asm '(:ld "(HL),E")
                         :fun (lambda (cpu mmu instr)
                                (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
-                                 (write-memory-at-addr addr (gbcpu-e cpu))
+                                 (write-memory-at-addr mmu addr (gbcpu-e cpu))
                                  (incr-cpu-counters cpu instr)))))
 (setf (aref ops #x74) (make-instruction
                         :opcode #x74 :bytes 1 :cycles '(2 0) :asm '(:ld "(HL),H")
                         :fun (lambda (cpu mmu instr)
                                (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
-                                 (write-memory-at-addr addr (gbcpu-h cpu))
+                                 (write-memory-at-addr mmu addr (gbcpu-h cpu))
                                  (incr-cpu-counters cpu instr)))))
 (setf (aref ops #x75) (make-instruction
                         :opcode #x75 :bytes 1 :cycles '(2 0) :asm '(:ld "(HL),L")
                         :fun (lambda (cpu mmu instr)
                                (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
-                                 (write-memory-at-addr addr (gbcpu-l cpu))
+                                 (write-memory-at-addr mmu addr (gbcpu-l cpu))
                                  (incr-cpu-counters cpu instr)))))
 (setf (aref ops #x76) (make-instruction
                         :opcode #x76 :bytes 1 :cycles '(1 0) :asm '(:halt)
                         :fun (lambda (cpu mmu instr)
-                               (setf (gbcpu-halted cpu) #x01)
+                               (if (= (gbcpu-int-ena cpu) 1)
+                                 (setf (gbcpu-halted cpu) #x01))
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #x77) (make-instruction
                         :opcode #x77 :bytes 1 :cycles '(2 0) :asm '(:ld "(HL),A")
                         :fun (lambda (cpu mmu instr)
                                (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
-                                 (write-memory-at-addr addr (gbcpu-a cpu))
+                                 (write-memory-at-addr mmu addr (gbcpu-a cpu))
                                  (incr-cpu-counters cpu instr)))))
 
 ;; Load Into A
@@ -1442,11 +1442,11 @@
                                  (incr-cpu-counters cpu instr)
                                  (if (= (gbflags-z (gbcpu-flags cpu)) #x00)
                                    (progn (incr-branched-clocks cpu instr)
-                                          (do-call-at-addr cpu addr)))))))
+                                          (do-call-at-addr cpu mmu addr)))))))
 (setf (aref ops #xc5) (make-instruction
                         :opcode #xc5 :bytes 1 :cycles '(4 0) :asm '(:push "BC")
                         :fun (lambda (cpu mmu instr)
-                               (push-reg-pair-on-stack cpu (gbcpu-b cpu) (gbcpu-c cpu))
+                               (push-reg-pair-on-stack cpu mmu (gbcpu-b cpu) (gbcpu-c cpu))
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #xc6) (make-instruction
                         :opcode #xc6 :bytes 2 :cycles '(2 0) :asm '(:add "A,u8")
@@ -1458,7 +1458,7 @@
                         :opcode #xc7 :bytes 1 :cycles '(4 0) :asm '(:rst "00h")
                         :fun (lambda (cpu mmu instr)
                                (incr-cpu-counters cpu instr)
-                               (do-rst cpu #x00))))
+                               (do-rst cpu mmu #x00))))
 (setf (aref ops #xc8) (make-instruction
                         :opcode #xc8 :bytes 1 :cycles '(2 3) :asm '(:ret "Z")
                         :fun (lambda (cpu mmu instr)
@@ -1486,13 +1486,13 @@
                                  (incr-cpu-counters cpu instr)
                                  (if (= (gbflags-z (gbcpu-flags cpu)) #x01)
                                    (progn (incr-branched-clocks cpu instr)
-                                          (do-call-at-addr cpu addr)))))))
+                                          (do-call-at-addr cpu mmu addr)))))))
 (setf (aref ops #xcd) (make-instruction
                         :opcode #xcd :bytes 3 :cycles '(6 0) :asm '(:call "u16")
                         :fun (lambda (cpu mmu instr)
                                (let ((addr (get-address-from-memory mmu (+ (gbcpu-pc cpu) 1))))
                                  (incr-cpu-counters cpu instr)
-                                 (do-call-at-addr cpu addr)))))
+                                 (do-call-at-addr cpu mmu addr)))))
 (setf (aref ops #xce) (make-instruction
                         :opcode #xce :bytes 2 :cycles '(2 0) :asm '(:adc "A,u8")
                         :fun (lambda (cpu mmu instr)
@@ -1504,7 +1504,7 @@
                         :opcode #xcf :bytes 1 :cycles '(4 0) :asm '(:rst "08h")
                         :fun (lambda (cpu mmu instr)
                                (incr-cpu-counters cpu instr)
-                               (do-rst cpu #x08))))
+                               (do-rst cpu mmu #x08))))
 
 (setf (aref ops #xd0) (make-instruction
                         :opcode #xd0 :bytes 1 :cycles '(2 3) :asm '(:ret "NC")
@@ -1533,11 +1533,11 @@
                                  (incr-cpu-counters cpu instr)
                                  (if (= (gbflags-c (gbcpu-flags cpu)) #x00)
                                    (progn (incr-branched-clocks cpu instr)
-                                          (do-call-at-addr cpu addr)))))))
+                                          (do-call-at-addr cpu mmu addr)))))))
 (setf (aref ops #xd5) (make-instruction
                         :opcode #xd5 :bytes 1 :cycles '(4 0) :asm '(:push "DE")
                         :fun (lambda (cpu mmu instr)
-                               (push-reg-pair-on-stack cpu (gbcpu-d cpu) (gbcpu-e cpu))
+                               (push-reg-pair-on-stack cpu mmu (gbcpu-d cpu) (gbcpu-e cpu))
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #xd6) (make-instruction
                         :opcode #xd6 :bytes 2 :cycles '(2 0) :asm '(:sub "A,u8")
@@ -1549,7 +1549,7 @@
                         :opcode #xd7 :bytes 1 :cycles '(4 0) :asm '(:rst "10h")
                         :fun (lambda (cpu mmu instr)
                                (incr-cpu-counters cpu instr)
-                               (do-rst cpu #x10))))
+                               (do-rst cpu mmu #x10))))
 (setf (aref ops #xd8) (make-instruction
                         :opcode #xd8 :bytes 1 :cycles '(2 3) :asm '(:ret "C")
                         :fun (lambda (cpu mmu instr)
@@ -1578,7 +1578,7 @@
                                  (incr-cpu-counters cpu instr)
                                  (if (= (gbflags-c (gbcpu-flags cpu)) #x01)
                                    (progn (incr-branched-clocks cpu instr)
-                                          (do-call-at-addr cpu addr)))))))
+                                          (do-call-at-addr cpu mmu addr)))))))
 (setf (aref ops #xde) (make-instruction
                         :opcode #xde :bytes 2 :cycles '(2 0) :asm '(:sbc "A,u8")
                         :fun (lambda (cpu mmu instr)
@@ -1590,14 +1590,14 @@
                         :opcode #xdf :bytes 1 :cycles '(4 0) :asm '(:rst "18h")
                         :fun (lambda (cpu mmu instr)
                                (incr-cpu-counters cpu instr)
-                               (do-rst cpu #x18))))
+                               (do-rst cpu mmu #x18))))
 
 (setf (aref ops #xe0) (make-instruction
                         :opcode #xe0 :bytes 2 :cycles '(3 0) :asm '(:ld "(FF00+u8),A")
                         :fun (lambda (cpu mmu instr)
                                (let* ((b (read-memory-at-addr mmu (+ (gbcpu-pc cpu) 1)))
                                       (addr (+ #xff00 b)))
-                                 (write-memory-at-addr addr (gbcpu-a cpu))
+                                 (write-memory-at-addr mmu addr (gbcpu-a cpu))
                                  (incr-cpu-counters cpu instr)))))
 (setf (aref ops #xe1) (make-instruction
                         :opcode #xe1 :bytes 1 :cycles '(3 0) :asm '(:pop "HL")
@@ -1608,12 +1608,12 @@
                         :opcode #xe2 :bytes 1 :cycles '(2 0) :asm '(:ld "(FF00+C),A")
                         :fun (lambda (cpu mmu instr)
                                (let ((addr (+ #xff00 (gbcpu-c cpu))))
-                                 (write-memory-at-addr addr (gbcpu-a cpu))
+                                 (write-memory-at-addr mmu addr (gbcpu-a cpu))
                                  (incr-cpu-counters cpu instr)))))
 (setf (aref ops #xe5) (make-instruction
                         :opcode #xe5 :bytes 1 :cycles '(4 0) :asm '(:push "HL")
                         :fun (lambda (cpu mmu instr)
-                               (push-reg-pair-on-stack cpu (gbcpu-h cpu) (gbcpu-l cpu))
+                               (push-reg-pair-on-stack cpu mmu (gbcpu-h cpu) (gbcpu-l cpu))
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #xe6) (make-instruction
                         :opcode #xe6 :bytes 2 :cycles '(2 0) :asm '(:and "A,u8")
@@ -1626,7 +1626,7 @@
                         :opcode #xe7 :bytes 1 :cycles '(4 0) :asm '(:rst "20h")
                         :fun (lambda (cpu mmu instr)
                                (incr-cpu-counters cpu instr)
-                               (do-rst cpu #x20))))
+                               (do-rst cpu mmu #x20))))
 (setf (aref ops #xe8) (make-instruction
                         :opcode #xe8 :bytes 2 :cycles '(4 0) :asm '(:add "SP,i8")
                         :fun (lambda (cpu mmu instr)
@@ -1642,7 +1642,7 @@
                         :opcode #xea :bytes 3 :cycles '(4 0) :asm '(:ld "(u16),A")
                         :fun (lambda (cpu mmu instr)
                                (let ((addr (get-address-from-memory mmu (+ (gbcpu-pc cpu) 1))))
-                                 (write-memory-at-addr addr (gbcpu-a cpu))
+                                 (write-memory-at-addr mmu addr (gbcpu-a cpu))
                                  (incr-cpu-counters cpu instr)))))
 (setf (aref ops #xee) (make-instruction
                         :opcode #xee :bytes 2 :cycles '(2 0) :asm '(:xor "A,u8")
@@ -1655,7 +1655,7 @@
                         :opcode #xef :bytes 1 :cycles '(4 0) :asm '(:rst "28h")
                         :fun (lambda (cpu mmu instr)
                                (incr-cpu-counters cpu instr)
-                               (do-rst cpu #x28))))
+                               (do-rst cpu mmu #x28))))
 
 (setf (aref ops #xf0) (make-instruction
                         :opcode #xf0 :bytes 2 :cycles '(3 0) :asm '(:ld "A,(FF00+u8)")
@@ -1678,13 +1678,12 @@
 (setf (aref ops #xf3) (make-instruction
                         :opcode #xf3 :bytes 1 :cycles '(1 0) :asm '(:di)
                         :fun (lambda (cpu mmu instr)
-                               (format t "interrupts disabled~%")
                                (setf (gbcpu-int-ena cpu) 0)
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #xf5) (make-instruction
                         :opcode #xf5 :bytes 1 :cycles '(4 0) :asm '(:push "AF")
                         :fun (lambda (cpu mmu instr)
-                               (push-reg-pair-on-stack cpu (gbcpu-a cpu) (flags-into-byte (gbcpu-flags cpu)))
+                               (push-reg-pair-on-stack cpu mmu (gbcpu-a cpu) (flags-into-byte (gbcpu-flags cpu)))
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #xf6) (make-instruction
                         :opcode #xf6 :bytes 2 :cycles '(2 0) :asm '(:or "A,u8")
@@ -1697,7 +1696,7 @@
                         :opcode #xf7 :bytes 1 :cycles '(4 0) :asm '(:rst "30h")
                         :fun (lambda (cpu mmu instr)
                                (incr-cpu-counters cpu instr)
-                               (do-rst cpu #x30))))
+                               (do-rst cpu mmu #x30))))
 (setf (aref ops #xf8) (make-instruction
                         :opcode #xf8 :bytes 2 :cycles '(3 0) :asm '(:add "HL,SP+i8")
                         :fun (lambda (cpu mmu instr)
@@ -1718,7 +1717,6 @@
 (setf (aref ops #xfb) (make-instruction
                         :opcode #xfb :bytes 1 :cycles '(1 0) :asm '(:ei)
                         :fun (lambda (cpu mmu instr)
-                               (format t "interrupts enabled~%")
                                (setf (gbcpu-int-ena cpu) 1)
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #xfe) (make-instruction
@@ -1731,7 +1729,7 @@
                         :opcode #xff :bytes 1 :cycles '(4 0) :asm '(:rst "38h")
                         :fun (lambda (cpu mmu instr)
                                (incr-cpu-counters cpu instr)
-                               (do-rst cpu #x38))))
+                               (do-rst cpu mmu #x38))))
 
 (defun test-bit-reg (cpu val bit-pos)
   (let ((res (logand val (ash #x01 bit-pos))))
@@ -1754,14 +1752,6 @@
           (gbflags-h (gbcpu-flags cpu)) 0
           (gbflags-c (gbcpu-flags cpu)) b7)
     res))
-(defun rot-right-reg (cpu val)
-  (let ((b0 (logand val #x01))
-        (res (logand (logior (ash val -1) (ash (gbflags-c (gbcpu-flags cpu)) 7)) #xff)))
-    (setf (gbflags-z (gbcpu-flags cpu)) (if (= res #x00) #x01 #x00)
-          (gbflags-n (gbcpu-flags cpu)) 0
-          (gbflags-h (gbcpu-flags cpu)) 0
-          (gbflags-c (gbcpu-flags cpu)) b0)
-    res))
 (defun rot-left-c-reg (cpu val)
   (let* ((b7 (logand (ash val -7) #x01))
          (res (logand (logior (ash val 1) b7) #xff)))
@@ -1769,6 +1759,15 @@
           (gbflags-n (gbcpu-flags cpu)) 0
           (gbflags-h (gbcpu-flags cpu)) 0
           (gbflags-c (gbcpu-flags cpu)) b7)
+    res))
+
+(defun rot-right-reg (cpu val)
+  (let ((b0 (logand val #x01))
+        (res (logand (logior (ash val -1) (ash (gbflags-c (gbcpu-flags cpu)) 7)) #xff)))
+    (setf (gbflags-z (gbcpu-flags cpu)) (if (= res #x00) #x01 #x00)
+          (gbflags-n (gbcpu-flags cpu)) 0
+          (gbflags-h (gbcpu-flags cpu)) 0
+          (gbflags-c (gbcpu-flags cpu)) b0)
     res))
 (defun rot-right-c-reg (cpu val)
   (let* ((b0 (logand val #x01))
@@ -1781,7 +1780,7 @@
 
 (defun sla (cpu val)
   (let ((b7 (logand (ash val -7) #x01))
-        (res (logand (ash val -1) #xfe)))
+        (res (logand (ash val 1) #xfe)))
     (setf (gbflags-z (gbcpu-flags cpu)) (if (= res #x00) #x01 #x00)
           (gbflags-n (gbcpu-flags cpu)) 0
           (gbflags-h (gbcpu-flags cpu)) 0
@@ -1850,7 +1849,7 @@
                            :opcode #x06 :bytes 2 :cycles '(4 0) :asm '(:rlc "(HL)")
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
-                                    (write-memory-at-addr addr (rot-left-c-reg cpu (read-memory-at-addr mmu addr)))
+                                    (write-memory-at-addr mmu addr (rot-left-c-reg cpu (read-memory-at-addr mmu addr)))
                                     (incr-cpu-counters cpu instr)))))
 (setf (aref cb-ops #x07) (make-instruction
                            :opcode #x07 :bytes 2 :cycles '(2 0) :asm '(:rlc "A")
@@ -1893,7 +1892,7 @@
                            :opcode #x0e :bytes 2 :cycles '(4 0) :asm '(:rrc "(HL)")
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
-                                    (write-memory-at-addr addr (rot-right-c-reg cpu (read-memory-at-addr mmu addr)))
+                                    (write-memory-at-addr mmu addr (rot-right-c-reg cpu (read-memory-at-addr mmu addr)))
                                     (incr-cpu-counters cpu instr)))))
 (setf (aref cb-ops #x0f) (make-instruction
                            :opcode #x0f :bytes 2 :cycles '(2 0) :asm '(:rrc "A")
@@ -1936,7 +1935,7 @@
                            :opcode #x16 :bytes 2 :cycles '(4 0) :asm '(:rl "(HL)")
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
-                                    (write-memory-at-addr addr (rot-left-reg cpu (read-memory-at-addr mmu addr)))
+                                    (write-memory-at-addr mmu addr (rot-left-reg cpu (read-memory-at-addr mmu addr)))
                                     (incr-cpu-counters cpu instr)))))
 (setf (aref cb-ops #x17) (make-instruction
                            :opcode #x17 :bytes 2 :cycles '(2 0) :asm '(:rl "A")
@@ -1978,7 +1977,7 @@
                            :opcode #x1e :bytes 2 :cycles '(4 0) :asm '(:rr "(HL)")
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
-                                    (write-memory-at-addr addr (rot-right-reg cpu (read-memory-at-addr mmu addr)))
+                                    (write-memory-at-addr mmu addr (rot-right-reg cpu (read-memory-at-addr mmu addr)))
                                     (incr-cpu-counters cpu instr)))))
 (setf (aref cb-ops #x1f) (make-instruction
                            :opcode #x1f :bytes 2 :cycles '(2 0) :asm '(:rr "A")
@@ -2021,7 +2020,7 @@
                            :opcode #x26 :bytes 2 :cycles '(4 0) :asm '(:sla "(HL)")
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
-                                    (write-memory-at-addr addr (sla cpu (read-memory-at-addr mmu addr)))
+                                    (write-memory-at-addr mmu addr (sla cpu (read-memory-at-addr mmu addr)))
                                     (incr-cpu-counters cpu instr)))))
 (setf (aref cb-ops #x27) (make-instruction
                            :opcode #x27 :bytes 2 :cycles '(2 0) :asm '(:sla "A")
@@ -2064,7 +2063,7 @@
                            :opcode #x2e :bytes 2 :cycles '(4 0) :asm '(:sra "(HL)")
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
-                                    (write-memory-at-addr addr (sra cpu (read-memory-at-addr mmu addr)))
+                                    (write-memory-at-addr mmu addr (sra cpu (read-memory-at-addr mmu addr)))
                                     (incr-cpu-counters cpu instr)))))
 (setf (aref cb-ops #x2f) (make-instruction
                            :opcode #x2f :bytes 2 :cycles '(2 0) :asm '(:sra "A")
@@ -2107,7 +2106,7 @@
                            :opcode #x36 :bytes 2 :cycles '(4 0) :asm '(:swap "(HL)")
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
-                                    (write-memory-at-addr addr (swap-reg cpu (read-memory-at-addr mmu addr)))
+                                    (write-memory-at-addr mmu addr (swap-reg cpu (read-memory-at-addr mmu addr)))
                                     (incr-cpu-counters cpu instr)))))
 (setf (aref cb-ops #x37) (make-instruction
                            :opcode #x37 :bytes 2 :cycles '(2 0) :asm '(:swap "(HL)")
@@ -2150,7 +2149,7 @@
                            :opcode #x3e :bytes 2 :cycles '(4 0) :asm '(:srl "(HL)")
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
-                                    (write-memory-at-addr addr (srl cpu (read-memory-at-addr mmu addr)))
+                                    (write-memory-at-addr mmu addr (srl cpu (read-memory-at-addr mmu addr)))
                                     (incr-cpu-counters cpu instr)))))
 (setf (aref cb-ops #x3f) (make-instruction
                            :opcode #x3f :bytes 2 :cycles '(2 0) :asm '(:srl "A")
@@ -2526,7 +2525,7 @@
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
                                     (incr-cpu-counters cpu instr)
-                                    (write-memory-at-addr addr (reset-bit-reg cpu (read-memory-at-addr mmu addr) 0))))))
+                                    (write-memory-at-addr mmu addr (reset-bit-reg cpu (read-memory-at-addr mmu addr) 0))))))
 (setf (aref cb-ops #x87) (make-instruction
                            :opcode #x87 :bytes 2 :cycles '(2 0) :asm '(:res "0,A")
                            :fun (lambda (cpu mmu instr)
@@ -2568,7 +2567,7 @@
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
                                     (incr-cpu-counters cpu instr)
-                                    (write-memory-at-addr addr (reset-bit-reg cpu (read-memory-at-addr mmu addr) 1))))))
+                                    (write-memory-at-addr mmu addr (reset-bit-reg cpu (read-memory-at-addr mmu addr) 1))))))
 (setf (aref cb-ops #x8f) (make-instruction
                            :opcode #x8f :bytes 2 :cycles '(2 0) :asm '(:res "1,A")
                            :fun (lambda (cpu mmu instr)
@@ -2610,7 +2609,7 @@
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
                                     (incr-cpu-counters cpu instr)
-                                    (write-memory-at-addr addr (reset-bit-reg cpu (read-memory-at-addr mmu addr) 2))))))
+                                    (write-memory-at-addr mmu addr (reset-bit-reg cpu (read-memory-at-addr mmu addr) 2))))))
 (setf (aref cb-ops #x97) (make-instruction
                            :opcode #x97 :bytes 2 :cycles '(2 0) :asm '(:res "2,A")
                            :fun (lambda (cpu mmu instr)
@@ -2652,7 +2651,7 @@
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
                                     (incr-cpu-counters cpu instr)
-                                    (write-memory-at-addr addr (reset-bit-reg cpu (read-memory-at-addr mmu addr) 3))))))
+                                    (write-memory-at-addr mmu addr (reset-bit-reg cpu (read-memory-at-addr mmu addr) 3))))))
 (setf (aref cb-ops #x9f) (make-instruction
                            :opcode #x9f :bytes 2 :cycles '(2 0) :asm '(:res "3,A")
                            :fun (lambda (cpu mmu instr)
@@ -2694,7 +2693,7 @@
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
                                     (incr-cpu-counters cpu instr)
-                                    (write-memory-at-addr addr (reset-bit-reg cpu (read-memory-at-addr mmu addr) 4))))))
+                                    (write-memory-at-addr mmu addr (reset-bit-reg cpu (read-memory-at-addr mmu addr) 4))))))
 (setf (aref cb-ops #xa7) (make-instruction
                            :opcode #xa7 :bytes 2 :cycles '(2 0) :asm '(:res "4,A")
                            :fun (lambda (cpu mmu instr)
@@ -2736,7 +2735,7 @@
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
                                     (incr-cpu-counters cpu instr)
-                                    (write-memory-at-addr addr (reset-bit-reg cpu (read-memory-at-addr mmu addr) 5))))))
+                                    (write-memory-at-addr mmu addr (reset-bit-reg cpu (read-memory-at-addr mmu addr) 5))))))
 (setf (aref cb-ops #xaf) (make-instruction
                            :opcode #xaf :bytes 2 :cycles '(2 0) :asm '(:res "5,A")
                            :fun (lambda (cpu mmu instr)
@@ -2778,7 +2777,7 @@
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
                                     (incr-cpu-counters cpu instr)
-                                    (write-memory-at-addr addr (reset-bit-reg cpu (read-memory-at-addr mmu addr) 6))))))
+                                    (write-memory-at-addr mmu addr (reset-bit-reg cpu (read-memory-at-addr mmu addr) 6))))))
 (setf (aref cb-ops #xb7) (make-instruction
                            :opcode #xb7 :bytes 2 :cycles '(2 0) :asm '(:res "6,A")
                            :fun (lambda (cpu mmu instr)
@@ -2820,7 +2819,7 @@
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
                                     (incr-cpu-counters cpu instr)
-                                    (write-memory-at-addr addr (reset-bit-reg cpu (read-memory-at-addr mmu addr) 7))))))
+                                    (write-memory-at-addr mmu addr (reset-bit-reg cpu (read-memory-at-addr mmu addr) 7))))))
 (setf (aref cb-ops #xbf) (make-instruction
                            :opcode #xbf :bytes 2 :cycles '(2 0) :asm '(:res "7,A")
                            :fun (lambda (cpu mmu instr)
@@ -2863,7 +2862,7 @@
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
                                     (incr-cpu-counters cpu instr)
-                                    (write-memory-at-addr addr (set-bit-reg cpu (read-memory-at-addr mmu addr) 0))))))
+                                    (write-memory-at-addr mmu addr (set-bit-reg cpu (read-memory-at-addr mmu addr) 0))))))
 (setf (aref cb-ops #xc7) (make-instruction
                            :opcode #xc7 :bytes 2 :cycles '(2 0) :asm '(:bit "0,A")
                            :fun (lambda (cpu mmu instr)
@@ -2905,7 +2904,7 @@
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
                                     (incr-cpu-counters cpu instr)
-                                    (write-memory-at-addr addr (set-bit-reg cpu (read-memory-at-addr mmu addr) 1))))))
+                                    (write-memory-at-addr mmu addr (set-bit-reg cpu (read-memory-at-addr mmu addr) 1))))))
 (setf (aref cb-ops #xcf) (make-instruction
                            :opcode #xcf :bytes 2 :cycles '(2 0) :asm '(:bit "1,A")
                            :fun (lambda (cpu mmu instr)
@@ -2947,7 +2946,7 @@
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
                                     (incr-cpu-counters cpu instr)
-                                    (write-memory-at-addr addr (set-bit-reg cpu (read-memory-at-addr mmu addr) 2))))))
+                                    (write-memory-at-addr mmu addr (set-bit-reg cpu (read-memory-at-addr mmu addr) 2))))))
 (setf (aref cb-ops #xd7) (make-instruction
                            :opcode #xd7 :bytes 2 :cycles '(2 0) :asm '(:bit "2,A")
                            :fun (lambda (cpu mmu instr)
@@ -2989,7 +2988,7 @@
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
                                     (incr-cpu-counters cpu instr)
-                                    (write-memory-at-addr addr (set-bit-reg cpu (read-memory-at-addr mmu addr) 3))))))
+                                    (write-memory-at-addr mmu addr (set-bit-reg cpu (read-memory-at-addr mmu addr) 3))))))
 (setf (aref cb-ops #xdf) (make-instruction
                            :opcode #xdf :bytes 2 :cycles '(2 0) :asm '(:bit "3,A")
                            :fun (lambda (cpu mmu instr)
@@ -3031,7 +3030,7 @@
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
                                     (incr-cpu-counters cpu instr)
-                                    (write-memory-at-addr addr (set-bit-reg cpu (read-memory-at-addr mmu addr) 4))))))
+                                    (write-memory-at-addr mmu addr (set-bit-reg cpu (read-memory-at-addr mmu addr) 4))))))
 (setf (aref cb-ops #xe7) (make-instruction
                            :opcode #xe7 :bytes 2 :cycles '(2 0) :asm '(:bit "4,A")
                            :fun (lambda (cpu mmu instr)
@@ -3073,7 +3072,7 @@
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
                                     (incr-cpu-counters cpu instr)
-                                    (write-memory-at-addr addr (set-bit-reg cpu (read-memory-at-addr mmu addr) 5))))))
+                                    (write-memory-at-addr mmu addr (set-bit-reg cpu (read-memory-at-addr mmu addr) 5))))))
 (setf (aref cb-ops #xef) (make-instruction
                            :opcode #xef :bytes 2 :cycles '(2 0) :asm '(:bit "5,A")
                            :fun (lambda (cpu mmu instr)
@@ -3115,7 +3114,7 @@
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
                                     (incr-cpu-counters cpu instr)
-                                    (write-memory-at-addr addr (set-bit-reg cpu (read-memory-at-addr mmu addr) 6))))))
+                                    (write-memory-at-addr mmu addr (set-bit-reg cpu (read-memory-at-addr mmu addr) 6))))))
 (setf (aref cb-ops #xf7) (make-instruction
                            :opcode #xf7 :bytes 2 :cycles '(2 0) :asm '(:bit "6,A")
                            :fun (lambda (cpu mmu instr)
@@ -3157,7 +3156,7 @@
                            :fun (lambda (cpu mmu instr)
                                   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
                                     (incr-cpu-counters cpu instr)
-                                    (write-memory-at-addr addr (set-bit-reg cpu (read-memory-at-addr mmu addr) 7))))))
+                                    (write-memory-at-addr mmu addr (set-bit-reg cpu (read-memory-at-addr mmu addr) 7))))))
 (setf (aref cb-ops #xff) (make-instruction
                            :opcode #xff :bytes 2 :cycles '(2 0) :asm '(:bit "7,A")
                            :fun (lambda (cpu mmu instr)
@@ -3174,8 +3173,9 @@
         (format t "Unimplemented CB instruction ~X @ ~X~%" op (gbcpu-pc cpu)))))
 (defparameter halted-instr (make-instruction :opcode 0 :bytes 0 :cycles '(1 0) :asm '(:cpu "halted")
                                              :fun (lambda (cpu mmu instr) (incr-clocks cpu instr))))
-(defun emu-single-op (cpu mmu op)
-    (let ((instr (if (= (gbcpu-halted cpu) #x00) (if (= op #xcb) (get-cb-instruction cpu mmu) (aref ops op)) halted-instr)))
+(defun emu-single-op (cpu mmu)
+    (let* ((op (read-memory-at-addr mmu (gbcpu-pc cpu)))
+          (instr (if (= (gbcpu-halted cpu) #x00) (if (= op #xcb) (get-cb-instruction cpu mmu) (aref ops op)) halted-instr)))
     (if (instruction-p instr)
       (progn (if (null (instruction-fun instr))
                (format t "Unable to run function for instruction ~X @ ~X~%" op (gbcpu-pc cpu))
@@ -3185,8 +3185,8 @@
 
 (defun do-interrupt (cpu mmu interrupt-id)
   (setf (gbcpu-halted cpu) #x00)
-  (write-memory-at-addr #xff0f (logand (read-memory-at-addr mmu #xff0f) (logxor (ash #x01 interrupt-id) #xff)))
-  (do-call-at-addr cpu (+ (* interrupt-id 8) #x40)))
+  (write-memory-at-addr mmu #xff0f (logand (read-memory-at-addr mmu #xff0f) (logxor (ash #x01 interrupt-id) #xff)))
+  (do-call-at-addr cpu mmu (+ (* interrupt-id 8) #x40)))
 
 (defun handle-interrupts (cpu mmu )
   (if (= (gbcpu-int-ena cpu) #x01)
@@ -3206,11 +3206,14 @@
       (if (= (logand (logand (read-memory-at-addr mmu #xffff) #x10) (logand (read-memory-at-addr mmu #xff0f) #x10)) #x10)
         (do-interrupt cpu mmu 4))))))))
 
+(defun set-interrupt-flag (mmu bit-pos)
+  (write-memory-at-addr mmu #xff05 (logior (read-memory-at-addr mmu #xff05) (ash #x01 (- 0 bit-pos)))))
+
 (defun handle-timers (cpu mmu)
   (if (> (gbcpu-div-clock cpu) #xff)
     (progn
       (setf (gbcpu-div-clock cpu) (- (gbcpu-div-clock cpu) #x100))
-      (write-memory-at-addr #xff04 (logand (+ (read-memory-at-addr mmu #xff04) #x01) #xff))))
+      (write-memory-at-addr mmu #xff04 (logand (+ (read-memory-at-addr mmu #xff04) #x01) #xff))))
   (if (= (logand (read-memory-at-addr mmu #xff07) #x04) #x04)
     (incr-timer-by-cycles cpu mmu (get-cycles-per-timer-tick (get-timer-frequency (read-memory-at-addr mmu #xff07))))
     (setf (gbcpu-clock cpu) 0)))
@@ -3223,9 +3226,9 @@
          (new-ticks (+ cur-ticks ticks)))
     (setf (gbcpu-clock cpu) remainder)
     (if (> new-ticks #xff)
-      (progn (write-memory-at-addr #xff0f (logior (read-memory-at-addr mmu #xff0f) #x04))
-             (write-memory-at-addr #xff05 (+ (read-memory-at-addr mmu #xff06) (logand new-ticks #xff))))
-      (write-memory-at-addr #xff05 (logand new-ticks #xff)))))
+      (progn (write-memory-at-addr mmu #xff0f (logior (read-memory-at-addr mmu #xff0f) #x04))
+             (write-memory-at-addr mmu #xff05 (+ (read-memory-at-addr mmu #xff06) (logand new-ticks #xff))))
+      (write-memory-at-addr mmu #xff05 (logand new-ticks #xff)))))
 
 (defun get-cycles-per-timer-tick (freq)
   (/ CPU_SPEED freq))
@@ -3236,7 +3239,6 @@
       (if (= tac-two-lsb #x02) 65536
         (if (= tac-two-lsb #x03) 16384
           4096)))))
-
 
 (defconstant CPU_SPEED 4194304)
 
@@ -3266,18 +3268,20 @@
 ;(defparameter loaded-rom  "red.gb")
 
 (defun dump-blargg-output ()
-  (loop for a from #x9800 to #x9BFF
-        do (format t "~A" (code-char (read-memory-at-addr *mmu* a)))))
+  (dump-mem-region #x9800 #x9BFF))
+
 (defun dump-out ()
   (format t "~{~A~}" (reverse *out*)))
 
 ;; test rom memory replace calls
-(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/instr_timing/instr_timing.gb") ; PASSED
+(defparameter loaded-rom "./opus1.gb")
+;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/instr_timing/instr_timing.gb") ; PASSED
+;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/cpu_instrs.gb")
 ;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/01-special.gb")
 ;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/02-interrupts.gb")
-;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/03-op sp,hl.gb")
-;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/04-op r,imm.gb")
-;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/05-op rp.gb")
+;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/03-op sp,hl.gb") ; PASSED
+;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/04-op r,imm.gb") ; PASSED
+;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/05-op rp.gb") ; PASSED
 ;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/06-ld r,r.gb") ; PASSED
 ;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/07-jr,jp,call,ret,rst.gb") ; PASSED
 ;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/08-misc instrs.gb") ; PASSED
