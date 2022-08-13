@@ -6,7 +6,7 @@
 ;(in-package :clboy)
 
 (defstruct gb
-  (cpu (default-cpu) :type gbcpu)
+  (cpu (make-gbcpu) :type gbcpu)
   (mmu (make-gbmmu))
   (ppu (make-gbppu))
   (input (make-gbinput))
@@ -36,7 +36,7 @@
   (div-clock 0 :type (unsigned-byte 16))
   (int-ena 0 :type (unsigned-byte 1))
   (halted 0 :type (unsigned-byte 1))
-  flags (make-gbflags))
+  (flags (make-gbflags)))
 
 (defstruct gbflags
   (z 0 :type (unsigned-byte 1))
@@ -78,7 +78,10 @@
         (gbflags-c flags) (if (> res #xff) #x01 #x00)))
 
 (defun write-memory-at-addr (mmu addr val)
-  (setf (aref (gbmmu-mem mmu) addr) val))
+  (case addr
+    (#xff00 (setf (aref (gbmmu-mem mmu) addr) (logand val #x30)))
+    (otherwise (setf (aref (gbmmu-mem mmu) addr) val))))
+
 (defun read-memory-at-addr (mmu addr)
   (if (< addr #x100)
     (if (gbmmu-is-bios? mmu)
@@ -3192,17 +3195,19 @@
       (if (instruction-p instr)
         instr
         (format t "Unimplemented CB instruction ~X @ ~X~%" op (gbcpu-pc cpu)))))
-(defparameter halted-instr (make-instruction :opcode 0 :bytes 0 :cycles '(1 0) :asm '(:cpu "halted")
-                                             :fun (lambda (cpu mmu instr) (incr-clocks cpu instr))))
+
 (defun emu-single-op (cpu mmu)
+  (if (= (gbcpu-halted cpu) #x00)
     (let* ((op (read-memory-at-addr mmu (gbcpu-pc cpu)))
-          (instr (if (= (gbcpu-halted cpu) #x00) (if (= op #xcb) (get-cb-instruction cpu mmu) (aref ops op)) halted-instr)))
-    (if (instruction-p instr)
-      (progn (if (null (instruction-fun instr))
+          (instr (if (= op #xcb) (get-cb-instruction cpu mmu) (aref ops op))))
+      (if (instruction-p instr)
+        (progn (if (null (instruction-fun instr))
                (format t "Unable to run function for instruction ~X @ ~X~%" op (gbcpu-pc cpu))
                (funcall (instruction-fun instr) cpu mmu instr))
              instr)
-      (format t "Unimplemented instruction ~X @ ~X~%" op (gbcpu-pc cpu)))))
+      (format t "Unimplemented instruction ~X @ ~X~%" op (gbcpu-pc cpu))))
+    (progn (incf (gbcpu-clock cpu) 4)
+           (incf (gbcpu-div-clock cpu)))))
 
 (defun do-interrupt (cpu mmu interrupt-id)
   (setf (gbcpu-halted cpu) #x00)
@@ -3305,32 +3310,42 @@
               (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3) 2)) (aref COLORS (+ (* palette-col 3) 2))
               ;(aref (gbppu-framebuffer-a ppu) (+ (* row 144 4) (* col 4) 3)) #xff
               )))))
-    (if (> row 153) (setf (gbppu-cur-line ppu) 0) (incf (gbppu-cur-line ppu)))
+    (incf (gbppu-cur-line ppu))
     (write-memory-at-addr mmu #xff44 (gbppu-cur-line ppu))))
 
 (defun step-ppu (ppu cpu mmu renderer texture)
   (incf (gbppu-cycles ppu) (gbcpu-clock cpu))
-  (when (> (gbppu-cycles ppu) 2)
+  (when (> (gbppu-cycles ppu) (* 456 4))
       (update-ppu-framebuffer ppu mmu)
       (setf (gbppu-cycles ppu) 0))
-  (when (>= (gbppu-cur-line ppu) 144)
+  (when (= (gbppu-cur-line ppu) 144)
+    (set-interrupt-flag mmu 0)
     (sdl2:update-texture
       texture
       (cffi:null-pointer)
       (static-vectors:static-vector-pointer
-        (gbppu-framebuffer ppu)) (* 160 3))
-    (sdl2:render-copy renderer texture)
-    (sdl2:render-present renderer)
-    (set-interrupt-flag mmu 0)))
+        (gbppu-framebuffer ppu)) (* 160 3))))
+
+(defun update-input-memory (mmu input)
+  (let ((input-val (logand (read-memory-at-addr mmu #xff00) #x30)))
+    (when (= input-val #x30) ; both p14 and p15 inactive
+      (write-memory-at-addr mmu #xff00 (logior input-val #x00)))
+    (when (= input-val #x20) ; p14 down up left right
+      (write-memory-at-addr mmu #xff00 (logior input-val #x00)))
+    (when (= input-val #x10) ; p15 start select b a
+      (write-memory-at-addr mmu #xff00 (logior input-val #x00)))))
 
 (defparameter *out* ())
+(defparameter *width* 160)
+(defparameter *height* 144)
+(defparameter *scale* 3)
 (defun emu-main (gb)
   (let ((cpu (gb-cpu gb))
         (mmu (gb-mmu gb))
         (ppu (gb-ppu gb))
         (input (gb-input gb)))
   (sdl2:with-init (:everything)
-    (sdl2:with-window (win :title "SDL2 Renderer API Demo" :flags '(:shown))
+    (sdl2:with-window (win :title "CL-Boy" :flags '(:shown :opengl) :w (* *width* *scale*) :h (* *height* *scale*))
       (sdl2:with-renderer (renderer win)
 				(let ((texture (sdl2:create-texture renderer :rgb24 :streaming 160 144)))
           (sdl2:with-event-loop (:method :poll)
@@ -3370,6 +3385,8 @@
                 (setf (gbinput-start input) nil)))
             (:idle ()
               (when (not (gb-stopped? gb))
+                (loop until (> (gbppu-cur-line ppu) 153)
+                  do
                 (let (( instr (emu-single-op cpu mmu)))
                   (if (not instr) (sdl2:push-event :quit))
                   ;(when (instruction-p instr)
@@ -3381,7 +3398,12 @@
                   (if (= (gbcpu-pc cpu) #x100) (setf (gbmmu-is-bios? mmu) nil))
                   (step-ppu ppu cpu mmu renderer texture)
                   (handle-timers cpu mmu)
-                  (handle-interrupts cpu mmu))))
+                  (handle-interrupts cpu mmu)
+                  (update-input-memory mmu input)
+                  )))
+              (setf (gbppu-cur-line ppu) 0)
+              (sdl2:render-copy renderer texture)
+              (sdl2:render-present renderer))
             (:quit () t))))))))
 
 
