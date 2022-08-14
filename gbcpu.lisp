@@ -45,7 +45,12 @@
   (c 0 :type (unsigned-byte 1)))
 
 (defstruct gbmmu
-  (mem (make-array #x10000 :initial-element 0 :element-type '(unsigned-byte 8)))
+  (rom (make-array #x10000 :initial-element 0 :element-type '(unsigned-byte 8)))
+  (vram (make-array #x2000 :initial-element 0 :element-type '(unsigned-byte 8)))
+  (ext-ram (make-array #x2000 :initial-element 0 :element-type '(unsigned-byte 8)))
+  (int-ram (make-array #x2000 :initial-element 0 :element-type '(unsigned-byte 8)))
+  (oam (make-array #x100 :initial-element 0 :element-type '(unsigned-byte 8)))
+  (zero-page (make-array #x100 :initial-element 0 :element-type '(unsigned-byte 8)))
   (bios (make-bios))
   (is-bios? t :type boolean))
 
@@ -69,7 +74,7 @@
 (defun make-bios ()
   (make-array #x100 :initial-contents (read-rom-data-from-file "DMG_ROM.bin")))
 
-(defun replace-memory-with-rom (mmu file) (replace (gbmmu-mem mmu) (read-rom-data-from-file file)))
+(defun replace-memory-with-rom (mmu file) (replace (gbmmu-rom mmu) (read-rom-data-from-file file)))
 
 ;; TODO for half carry during additions we know that if the bottom nibble is less than either
 ;; argument then we had a half carry. It could ADC also if we added the carry to the lesser arg.
@@ -78,16 +83,50 @@
         (gbflags-c flags) (if (> res #xff) #x01 #x00)))
 
 (defun write-memory-at-addr (mmu addr val)
-  (case addr
-    (#xff00 (setf (aref (gbmmu-mem mmu) addr) (logand val #x30)))
-    (otherwise (setf (aref (gbmmu-mem mmu) addr) val))))
+  (case (logand addr #xf000)
+    ((#x0000 #x1000 #x2000 #x3000) ())
+    ((#x4000 #x5000 #x6000 #x7000) ())
+    ((#x8000 #x9000)
+     (setf (aref (gbmmu-vram mmu) (logand addr #x1fff)) val))
+    ((#xa000 #xb000)
+     (setf (aref (gbmmu-ext-ram mmu) (logand addr #x1fff)) val))
+    ((#xc000 #xd000 #xe000)
+     (setf (aref (gbmmu-int-ram mmu) (logand addr #x1fff)) val))
+    (#xf000
+     (case (logand addr #x0f00)
+       ((#x100 #x200 #x300 #x400 #x500 #x600 #x700
+         #x800 #x900 #xa00 #xb00 #xc00 #xd00)
+         (setf (aref (gbmmu-int-ram mmu) (logand addr #x1fff)) val))
+       (#xe00
+        (if (< addr #xfea0) (setf (aref (gbmmu-oam mmu) (logand addr #xff)) val)))
+       (#xf00
+        (setf (aref (gbmmu-zero-page mmu) (logand addr #xff)) val))))))
 
 (defun read-memory-at-addr (mmu addr)
-  (if (< addr #x100)
-    (if (gbmmu-is-bios? mmu)
-      (aref (gbmmu-bios mmu) addr)
-      (aref (gbmmu-mem mmu) addr))
-    (aref (gbmmu-mem mmu) addr)))
+  (case (logand addr #xf000)
+    ((#x0000 #x1000 #x2000 #x3000)
+      (if (< addr #x100)
+        (if (gbmmu-is-bios? mmu)
+          (aref (gbmmu-bios mmu) addr)
+          (aref (gbmmu-rom mmu) addr))
+        (aref (gbmmu-rom mmu) addr)))
+    ((#x4000 #x5000 #x6000 #x7000)
+      (aref (gbmmu-rom mmu) addr))
+    ((#x8000 #x9000)
+      (aref (gbmmu-vram mmu) (logand addr #x1fff)))
+    ((#xa000 #xb000)
+      (aref (gbmmu-ext-ram mmu) (logand addr #x1fff)))
+    ((#xc000 #xd000 #xe000)
+      (aref (gbmmu-int-ram mmu) (logand addr #x1fff)))
+    (#xf000
+     (case (logand addr #x0f00)
+       ((#x100 #x200 #x300 #x400 #x500 #x600 #x700
+         #x800 #x900 #xa00 #xb00 #xc00 #xd00)
+         (aref (gbmmu-int-ram mmu) (logand addr #x1fff)))
+       (#xe00
+        (if (< addr #xfea0) (aref (gbmmu-oam mmu) (logand addr #xff)) 0))
+       (#xf00
+        (aref (gbmmu-zero-page mmu) (logand addr #xff)))))))
 
 (defun get-address-from-memory (mmu pc)
   (let* ((lsb (read-memory-at-addr mmu pc))
