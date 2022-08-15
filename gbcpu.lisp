@@ -44,15 +44,25 @@
   (h 0 :type (unsigned-byte 1))
   (c 0 :type (unsigned-byte 1)))
 
+;; TODO make ram and rom dependent on rom header info
 (defstruct gbmmu
-  (rom (make-array #x10000 :initial-element 0 :element-type '(unsigned-byte 8)))
+  (rom (make-array #x8000 :element-type '(unsigned-byte 8)))
+  (rom-offset #x4000)
   (vram (make-array #x2000 :initial-element 0 :element-type '(unsigned-byte 8)))
   (ext-ram (make-array #x2000 :initial-element 0 :element-type '(unsigned-byte 8)))
+  (ram-offset #x0000)
   (int-ram (make-array #x2000 :initial-element 0 :element-type '(unsigned-byte 8)))
   (oam (make-array #x100 :initial-element 0 :element-type '(unsigned-byte 8)))
   (zero-page (make-array #x100 :initial-element 0 :element-type '(unsigned-byte 8)))
   (bios (make-bios))
-  (is-bios? t :type boolean))
+  (carttype 0)
+  (is-bios? t :type boolean)
+  (ramon nil :type boolean)
+  (rombank 1)
+  (rommask 1)
+  (rambank 0)
+  (mode 0))
+
 
 (defstruct gbppu
   (framebuffer (static-vectors:make-static-vector (* 160 144 3)))
@@ -74,22 +84,43 @@
 (defun make-bios ()
   (make-array #x100 :initial-contents (read-rom-data-from-file "DMG_ROM.bin")))
 
-(defun replace-memory-with-rom (mmu file) (replace (gbmmu-rom mmu) (read-rom-data-from-file file)))
+(defun replace-memory-with-rom (mmu file)
+  (let ((rom (read-rom-data-from-file file)))
+    (setf (gbmmu-rom mmu) (make-array (length rom) :element-type '(unsigned-byte 8)))
+    (replace (gbmmu-rom mmu) rom)))
 
-;; TODO for half carry during additions we know that if the bottom nibble is less than either
-;; argument then we had a half carry. It could ADC also if we added the carry to the lesser arg.
-(defun set-flags-for-result (flags res)
-  (setf (gbflags-z flags) (if (= res #x00) #x01 #x00)
-        (gbflags-c flags) (if (> res #xff) #x01 #x00)))
+(defun get-carttype-from-rom (mmu) (setf (gbmmu-carttype mmu) (read-memory-at-addr mmu #x147)))
+(defun get-rommask-from-rom (mmu) (setf (gbmmu-rommask mmu) (- (ash #x02 (read-memory-at-addr mmu #x148)) 1)))
 
+;; TODO see if I can split mbc reg writes into separate functions.
 (defun write-memory-at-addr (mmu addr val)
   (case (logand addr #xf000)
-    ((#x0000 #x1000 #x2000 #x3000) ())
-    ((#x4000 #x5000 #x6000 #x7000) ())
+    ((#x0000 #x1000)
+     (case (gbmmu-carttype mmu)
+       ((2 3) (setf (gbmmu-ramon mmu) (if (= val #x0a) t nil)))))
+    ((#x2000 #x3000)
+     (case (gbmmu-carttype mmu)
+       ((1 2 3)
+        (let ((rombank (logand (+ (logand (gbmmu-rombank mmu) #x60) (if (> val 1) val 1)) (gbmmu-rommask mmu))))
+          (setf (gbmmu-rombank mmu) (if (= rombank 0) 1 rombank)
+                (gbmmu-rom-offset mmu) (* (if (= rombank 0) 1 rombank) #x4000))))))
+    ((#x4000 #x5000)
+     (case (gbmmu-carttype mmu)
+       ((1 2 3)
+        (if (= (gbmmu-mode mmu) #x01)
+        (let ((rambank (logand val #x03)))
+          (setf (gbmmu-rambank mmu) rambank
+                (gbmmu-ram-offset mmu) (* rambank #x2000)))
+        (let ((rombank (logand (+ (logand (gbmmu-rombank mmu) #x1f) (ash (logand val #x03) 5)) (gbmmu-rommask mmu))))
+          (setf (gbmmu-rombank mmu) (if (= rombank 0) 1 rombank)
+                (gbmmu-rom-offset mmu) (* (if (= rombank 0) 1 rombank) #x4000)))))))
+    ((#x6000 #x7000)
+     (case (gbmmu-carttype mmu)
+       ((2 3) (setf (gbmmu-mode mmu) (logand val #x01)))))
     ((#x8000 #x9000)
      (setf (aref (gbmmu-vram mmu) (logand addr #x1fff)) val))
     ((#xa000 #xb000)
-     (setf (aref (gbmmu-ext-ram mmu) (logand addr #x1fff)) val))
+     (setf (aref (gbmmu-ext-ram mmu) (+ (gbmmu-ram-offset mmu) (logand addr #x1fff))) val))
     ((#xc000 #xd000 #xe000)
      (setf (aref (gbmmu-int-ram mmu) (logand addr #x1fff)) val))
     (#xf000
@@ -111,17 +142,17 @@
           (aref (gbmmu-rom mmu) addr))
         (aref (gbmmu-rom mmu) addr)))
     ((#x4000 #x5000 #x6000 #x7000)
-      (aref (gbmmu-rom mmu) addr))
+      (aref (gbmmu-rom mmu) (+ (gbmmu-rom-offset mmu) (logand addr #x3fff))))
     ((#x8000 #x9000)
       (aref (gbmmu-vram mmu) (logand addr #x1fff)))
     ((#xa000 #xb000)
-      (aref (gbmmu-ext-ram mmu) (logand addr #x1fff)))
+      (aref (gbmmu-ext-ram mmu) (+ (gbmmu-ram-offset mmu) (logand addr #x1fff))))
     ((#xc000 #xd000 #xe000)
       (aref (gbmmu-int-ram mmu) (logand addr #x1fff)))
     (#xf000
      (case (logand addr #x0f00)
-       ((#x100 #x200 #x300 #x400 #x500 #x600 #x700
-         #x800 #x900 #xa00 #xb00 #xc00 #xd00)
+       ((#x000 #x100 #x200 #x300 #x400 #x500 #x600
+         #x700 #x800 #x900 #xa00 #xb00 #xc00 #xd00)
          (aref (gbmmu-int-ram mmu) (logand addr #x1fff)))
        (#xe00
         (if (< addr #xfea0) (aref (gbmmu-oam mmu) (logand addr #xff)) 0))
@@ -345,7 +376,8 @@
 (setf (aref ops #x07) (make-instruction
                         :opcode #x07 :bytes 1 :cycles '(1 0) :asm '(:rlca)
                         :fun (lambda (cpu mmu instr)
-                               (setf (gbcpu-a cpu ) (rot-left-c-reg cpu (gbcpu-a cpu)))
+                               (setf (gbcpu-a cpu ) (rot-left-c-reg cpu (gbcpu-a cpu))
+                                     (gbflags-z (gbcpu-flags cpu)) 0)
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #x08) (make-instruction
                         :opcode #x08 :bytes 3 :cycles '(5 0) :asm '(:ld "(u16),SP")
@@ -396,7 +428,8 @@
 (setf (aref ops #x0f) (make-instruction
                         :opcode #x0f :bytes 1 :cycles '(1 0) :asm '(:rrca)
                         :fun (lambda (cpu mmu instr)
-                               (setf (gbcpu-a cpu ) (rot-right-c-reg cpu (gbcpu-a cpu)))
+                               (setf (gbcpu-a cpu ) (rot-right-c-reg cpu (gbcpu-a cpu))
+                                     (gbflags-z (gbcpu-flags cpu)) 0)
                                (incr-cpu-counters cpu instr))))
 
 
@@ -446,7 +479,8 @@
 (setf (aref ops #x17) (make-instruction
                         :opcode #x17 :bytes 1 :cycles '(1 0) :asm '(:rla)
                         :fun (lambda (cpu mmu instr)
-                               (setf (gbcpu-a cpu ) (rot-left-reg cpu (gbcpu-a cpu)))
+                               (setf (gbcpu-a cpu ) (rot-left-reg cpu (gbcpu-a cpu))
+                                     (gbflags-z (gbcpu-flags cpu)) 0)
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #x18) (make-instruction
                         :opcode #x18 :bytes 2 :cycles '(3 0) :asm '(:jr "i8")
@@ -497,7 +531,8 @@
 (setf (aref ops #x1f) (make-instruction
                         :opcode #x1f :bytes 1 :cycles '(1 0) :asm '(:rra)
                         :fun (lambda (cpu mmu instr)
-                               (setf (gbcpu-a cpu ) (rot-right-reg cpu (gbcpu-a cpu)))
+                               (setf (gbcpu-a cpu ) (rot-right-reg cpu (gbcpu-a cpu))
+                                     (gbflags-z (gbcpu-flags cpu)) 0)
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #x20) (make-instruction
                         :opcode #x20 :bytes 2 :cycles '(2 1) :asm '(:jr "NZ,i8")
@@ -3378,6 +3413,7 @@
 (defparameter *width* 160)
 (defparameter *height* 144)
 (defparameter *scale* 3)
+(defparameter *debug* nil)
 (defun emu-main (gb)
   (let ((cpu (gb-cpu gb))
         (mmu (gb-mmu gb))
@@ -3425,21 +3461,20 @@
             (:idle ()
               (when (not (gb-stopped? gb))
                 (loop until (> (gbppu-cur-line ppu) 153)
+                  for instr = (emu-single-op cpu mmu)
                   do
-                (let (( instr (emu-single-op cpu mmu)))
-                  (if (not instr) (sdl2:push-event :quit))
-                  ;(when (instruction-p instr)
-                     ;(format t "~X: ~A --> PC=~X~%" (instruction-opcode instr) (instruction-asm instr) (gbcpu-pc cpu)))
-                  (if (= (read-memory-at-addr mmu #xff02) #x81)
-                    (progn
-                      (setf *out* (cons (code-char (read-memory-at-addr mmu #xff01)) *out*))
-                      (write-memory-at-addr mmu #xff02 0)))
-                  (if (= (gbcpu-pc cpu) #x100) (setf (gbmmu-is-bios? mmu) nil))
-                  (step-ppu ppu cpu mmu renderer texture)
-                  (handle-timers cpu mmu)
-                  (handle-interrupts cpu mmu)
-                  (update-input-memory mmu input)
-                  )))
+                    (when (not instr) (sdl2:push-event :quit) (return nil))
+                    (when (and *debug* (instruction-p instr))
+                       (format t "~X: ~A --> PC=~X~%" (instruction-opcode instr) (instruction-asm instr) (gbcpu-pc cpu)))
+                    (if (= (read-memory-at-addr mmu #xff02) #x81)
+                      (progn
+                        (setf *out* (cons (code-char (read-memory-at-addr mmu #xff01)) *out*))
+                        (write-memory-at-addr mmu #xff02 0)))
+                    (if (= (gbcpu-pc cpu) #x100) (setf (gbmmu-is-bios? mmu) nil))
+                    (step-ppu ppu cpu mmu renderer texture)
+                    (handle-timers cpu mmu)
+                    (handle-interrupts cpu mmu)
+                    (update-input-memory mmu input)))
               (setf (gbppu-cur-line ppu) 0)
               (sdl2:render-copy renderer texture)
               (sdl2:render-present renderer))
@@ -3451,8 +3486,9 @@
 (defun reset-gb ()
   (setf *gb* (make-gb))
   (replace-memory-with-rom (gb-mmu *gb*) loaded-rom)
-  ;(write-memory-at-addr mmu #xff44 #x90)
-  )
+  (get-carttype-from-rom (gb-mmu *gb*))
+  (get-rommask-from-rom (gb-mmu *gb*))
+  (write-memory-at-addr (gb-mmu *gb*) #xff00 #xff))
 
 (defun dump-mem-region (start end)
   (loop for a from start to end
@@ -3481,8 +3517,10 @@
 ;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/11-op a,(hl).gb")
 
 (replace-memory-with-rom (gb-mmu *gb*) loaded-rom)
+(get-carttype-from-rom (gb-mmu *gb*))
+(get-rommask-from-rom (gb-mmu *gb*))
 
-;(write-memory-at-addr mmu #xff44 #x90)
+(write-memory-at-addr (gb-mmu *gb*) #xff00 #xff)
 
 (defun run () (emu-main *gb*))
 
