@@ -100,7 +100,7 @@
        (#xe00
         (if (< addr #xfea0) (setf (aref (gbmmu-oam mmu) (logand addr #xff)) val)))
        (#xf00
-        (setf (aref (gbmmu-zero-page mmu) (logand addr #xff)) val))))))
+          (setf (aref (gbmmu-zero-page mmu) (logand addr #xff)) val))))))
 
 (defun read-memory-at-addr (mmu addr)
   (case (logand addr #xf000)
@@ -232,8 +232,20 @@
     (incf (gbppu-cur-line ppu))
     (write-memory-at-addr mmu #xff44 (gbppu-cur-line ppu))))
 
+(defun maybe-do-dma (ppu mmu)
+  (let ((initial (ash (read-memory-at-addr mmu #xff46) 8)))
+    (when (> initial 0)
+      (format t "transferring dma~%")
+      (loop for i from 0 to 159
+            do
+            (let ((src (+ initial i))
+                  (dest (+ #xffe00 i)))
+            (write-memory-at-addr mmu dest (read-memory-at-addr mmu src))))
+      (write-memory-at-addr mmu #xff46 0))))
+
 (defun step-ppu (ppu cpu mmu renderer texture)
   (incf (gbppu-cycles ppu) (gbcpu-clock cpu))
+  (maybe-do-dma ppu mmu)
   (when (> (gbppu-cycles ppu) (* 456 4))
       (update-ppu-framebuffer ppu mmu)
       (setf (gbppu-cycles ppu) 0))
@@ -258,7 +270,9 @@
 (defparameter *width* 160)
 (defparameter *height* 144)
 (defparameter *scale* 3)
+
 (defparameter *debug* nil)
+
 (defun emu-main (gb)
   (let ((cpu (gb-cpu gb))
         (mmu (gb-mmu gb))
@@ -311,6 +325,7 @@
                     (when (not instr) (sdl2:push-event :quit) (return nil))
                     (when (and *debug* (instruction-p instr))
                        (format t "~X: ~A --> PC=~X~%" (instruction-opcode instr) (instruction-asm instr) (gbcpu-pc cpu)))
+                    ;(when (= (gbcpu-pc cpu) #x1e7e) (sdl2:push-event :quit) (return nil))
                     (if (= (read-memory-at-addr mmu #xff02) #x81)
                       (progn
                         (setf *out* (cons (code-char (read-memory-at-addr mmu #xff01)) *out*))
@@ -328,7 +343,7 @@
 
 (defparameter *gb* (make-gb))
 
-(defun reset-gb ()
+(defun gb-reset ()
   (setf *gb* (make-gb))
   (replace-memory-with-rom (gb-mmu *gb*) loaded-rom)
   (get-carttype-from-rom (gb-mmu *gb*))
