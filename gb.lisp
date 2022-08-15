@@ -43,6 +43,7 @@
 (defstruct gbppu
   (framebuffer (static-vectors:make-static-vector (* 160 144 3)))
   (framebuffer-a (static-vectors:make-static-vector (* 160 144 4)))
+  (bg-buffer (make-array (* 144 160) :initial-element 0 :element-type '(unsigned-byte 8)))
   (cycles 0)
   (cur-line 0))
 
@@ -197,7 +198,20 @@
       unsign-byte
       (logior unsign-byte (- (mask-field (byte 1 7) #xff)))))
 
-(defun update-ppu-framebuffer (ppu mmu)
+(defun read-sprite (mmu addr)
+  (loop for a from addr to (+ addr 3)
+        collect (read-memory-at-addr mmu a)))
+
+(defun add-sprites-to-ppu-framebuffer (ppu mmu)
+  (let* ((row (gbppu-cur-line ppu))
+         (scroll-y (read-memory-at-addr mmu #xff42))
+         (scroll-x (read-memory-at-addr mmu #xff43)))
+    (loop for addr from #xfe00 to #xfea0
+          for sprite = (read-sprite mmu addr)
+          collect sprite)
+  ))
+
+(defun add-background-to-ppu-framebuffer (ppu mmu)
   (let* ((row (gbppu-cur-line ppu))
          (scroll-y (read-memory-at-addr mmu #xff42))
          (scroll-x (read-memory-at-addr mmu #xff43))
@@ -223,14 +237,13 @@
                          (logand (ash colorbyte1 (- 0 colorbitpos)) #x01)
                          (* (logand (ash colorbyte2 (- 0 colorbitpos)) #x01) 2))))
         ;(format t "tilemap addr ~X, tile-no ~X, color-addr ~X, colorval ~X~%" addr tile-no color-addr colorval)
+        (setf (aref (gbppu-bg-buffer ppu) (+ (* row 160) col)) colorval)
         (let ((palette-col (logand (ash (read-memory-at-addr mmu #xff47) (* colorval -2)) 3)))
         (setf (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3))) (aref COLORS (* palette-col 3))
               (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3) 1)) (aref COLORS (+ (* palette-col 3) 1))
               (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3) 2)) (aref COLORS (+ (* palette-col 3) 2))
               ;(aref (gbppu-framebuffer-a ppu) (+ (* row 144 4) (* col 4) 3)) #xff
-              )))))
-    (incf (gbppu-cur-line ppu))
-    (write-memory-at-addr mmu #xff44 (gbppu-cur-line ppu))))
+              )))))))
 
 (defun maybe-do-dma (ppu mmu)
   (let ((initial (ash (read-memory-at-addr mmu #xff46) 8)))
@@ -247,7 +260,10 @@
   (incf (gbppu-cycles ppu) (gbcpu-clock cpu))
   (maybe-do-dma ppu mmu)
   (when (> (gbppu-cycles ppu) (* 456 4))
-      (update-ppu-framebuffer ppu mmu)
+      (add-background-to-ppu-framebuffer ppu mmu)
+      (add-sprites-to-ppu-framebuffer ppu mmu)
+      (incf (gbppu-cur-line ppu))
+      (write-memory-at-addr mmu #xff44 (gbppu-cur-line ppu))
       (setf (gbppu-cycles ppu) 0))
   (when (= (gbppu-cur-line ppu) 144)
     (set-interrupt-flag mmu 0)
