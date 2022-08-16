@@ -45,8 +45,10 @@
   (framebuffer-a (static-vectors:make-static-vector (* 160 144 4)))
   (bg-buffer (make-array (* 144 160) :initial-element 0 :element-type '(unsigned-byte 8)))
   (cycles 0)
-  (cur-line 0))
+  (cur-line 0)
+  (mode 0))
 
+;; MMU
 (defun read-rom-data-from-file (filename) (with-open-file (bin filename :element-type '(unsigned-byte 8))
                                             (loop for b = (read-byte bin nil)
                                                   while b collect b)))
@@ -134,7 +136,8 @@
          (msb (read-memory-at-addr mmu (+ pc 1))))
     (logior lsb (ash msb 8))))
 
-(defun handle-interrupts (cpu mmu )
+;; interrupts
+(defun handle-interrupts (cpu mmu)
   (if (= (gbcpu-int-ena cpu) #x01)
       ; VBLANK interupt
       (if (= (logand (logand (read-memory-at-addr mmu #xffff) #x01) (logand (read-memory-at-addr mmu #xff0f) #x01)) #x01)
@@ -155,6 +158,7 @@
 (defun set-interrupt-flag (mmu bit-pos)
   (write-memory-at-addr mmu #xff05 (logior (read-memory-at-addr mmu #xff05) (ash #x01 (- 0 bit-pos)))))
 
+;; timers
 (defun handle-timers (cpu mmu)
   (if (> (gbcpu-div-clock cpu) #xff)
     (progn
@@ -176,6 +180,7 @@
              (write-memory-at-addr mmu #xff05 (+ (read-memory-at-addr mmu #xff06) (logand new-ticks #xff))))
       (write-memory-at-addr mmu #xff05 (logand new-ticks #xff)))))
 
+(defconstant CPU_SPEED 4194304)
 (defun get-cycles-per-timer-tick (freq)
   (/ CPU_SPEED freq))
 
@@ -186,17 +191,18 @@
         (if (= tac-two-lsb #x03) 16384
           4096)))))
 
-(defconstant CPU_SPEED 4194304)
+;; utils
+(defun make-signed-from-unsigned (unsign-byte)
+  (if (< unsign-byte 128)
+      unsign-byte
+      (logior unsign-byte (- (mask-field (byte 1 7) #xff)))))
+
+;; PPU
 
 (defconstant COLORS #(255 255 255
                       192 192 192
                       96 96 96
                        0  0  0))
-
-(defun make-signed-from-unsigned (unsign-byte)
-  (if (< unsign-byte 128)
-      unsign-byte
-      (logior unsign-byte (- (mask-field (byte 1 7) #xff)))))
 
 (defun read-sprite (mmu addr)
   (loop for a from addr to (+ addr 3)
@@ -256,23 +262,64 @@
             (write-memory-at-addr mmu dest (read-memory-at-addr mmu src))))
       (write-memory-at-addr mmu #xff46 0))))
 
+(defun check-ly-lyc (ppu mmu)
+  (let ((ly (read-memory-at-addr mmu #xff44))
+        (lyc (read-memory-at-addr mmu #xff45)))
+    (when (= ly lyc)
+      (let ((lcd-stat (read-memory-at-addr mmu #xff41))
+            (stat-int-ena #x40))
+        (write-memory-at-addr mmu #xff41 (+ (logand lcd-stat #xfb) #x04))
+        (if (= (logand lcd-stat stat-int-ena) stat-int-ena) (set-interrupt-flag mmu 1))))))
+
 (defun step-ppu (ppu cpu mmu renderer texture)
   (incf (gbppu-cycles ppu) (gbcpu-clock cpu))
   (maybe-do-dma ppu mmu)
-  (when (> (gbppu-cycles ppu) (* 456 4))
-      (add-background-to-ppu-framebuffer ppu mmu)
-      (add-sprites-to-ppu-framebuffer ppu mmu)
-      (incf (gbppu-cur-line ppu))
-      (write-memory-at-addr mmu #xff44 (gbppu-cur-line ppu))
-      (setf (gbppu-cycles ppu) 0))
-  (when (= (gbppu-cur-line ppu) 144)
-    (set-interrupt-flag mmu 0)
-    (sdl2:update-texture
-      texture
-      (cffi:null-pointer)
-      (static-vectors:static-vector-pointer
-        (gbppu-framebuffer ppu)) (* 160 3))))
+  (check-ly-lyc ppu mmu)
+  (case (gbppu-mode ppu)
+    ; in Hblank state
+    (0 (when (> (gbppu-cycles ppu) (* 204 4))
+         (incf (gbppu-cur-line ppu))
+         (write-memory-at-addr mmu #xff44 (gbppu-cur-line ppu))
+         (if (= (gbppu-cur-line ppu) 144)
+           (progn (ppu-mode-transition ppu mmu 1)
+                  (update-screen ppu mmu texture))
+           (ppu-mode-transition ppu mmu 2))))
+    ; in Vblank state
+    (1 (when (> (gbppu-cycles ppu) (* 456 4))
+         (incf (gbppu-cur-line ppu))
+         (write-memory-at-addr mmu #xff44 (gbppu-cur-line ppu))
+         (if (> (gbppu-cur-line ppu) 153) (ppu-mode-transition ppu mmu 2))))
+    ; in OAM state
+    (2 (when (> (gbppu-cycles ppu) (* 80 4))
+         (ppu-mode-transition ppu mmu 3)))
+    ; in VRAM Read state
+    (3 (when (> (gbppu-cycles ppu) (* 172 4))
+         (render-scanline ppu mmu)
+         (ppu-mode-transition ppu mmu 0)))))
 
+(defun ppu-mode-transition (ppu mmu mode)
+  (setf (gbppu-cycles ppu) 0)
+  (setf (gbppu-mode ppu) mode)
+  (let ((lcd-stat (read-memory-at-addr mmu #xff41))
+        (stat-int-ena (ash #x8 mode)))
+    (write-memory-at-addr mmu #xff41 (+ (logand lcd-stat #xfc) mode))
+    (if (< mode 3)
+      (if (= (logand lcd-stat stat-int-ena) stat-int-ena) (set-interrupt-flag mmu 1)))))
+
+
+(defun render-scanline (ppu mmu)
+    (add-background-to-ppu-framebuffer ppu mmu)
+    (add-sprites-to-ppu-framebuffer ppu mmu))
+
+(defun update-screen (ppu mmu texture)
+  (set-interrupt-flag mmu 0)
+  (sdl2:update-texture
+    texture
+    (cffi:null-pointer)
+    (static-vectors:static-vector-pointer
+      (gbppu-framebuffer ppu)) (* 160 3)))
+
+;; I/O
 (defun update-input-memory (mmu input)
   (let ((input-val (logand (read-memory-at-addr mmu #xff00) #x30)))
     (when (= input-val #x30) ; both p14 and p15 inactive
@@ -369,6 +416,9 @@
 (defun dump-mem-region (start end)
   (loop for a from start to end
         collect (read-memory-at-addr (gb-mmu *gb*) a)))
+
+(defun dump-oam ()
+  (dump-mem-region #xfe00 #xfea0))
 
 (defun dump-blargg-output ()
   (dump-mem-region #x9800 #x9BFF))
