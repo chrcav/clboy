@@ -368,13 +368,16 @@
          (write-memory-at-addr gb #xff44 (gbppu-cur-line ppu))
          (if (= (gbppu-cur-line ppu) 144)
            (progn (ppu-mode-transition ppu gb 1)
-                  (update-screen ppu gb texture))
+                  (update-screen ppu gb renderer texture))
            (ppu-mode-transition ppu gb 2))))
     ; in Vblank state
     (1 (when (> (gbppu-cycles ppu) (* 456 4))
          (incf (gbppu-cur-line ppu))
          (write-memory-at-addr gb #xff44 (gbppu-cur-line ppu))
-         (if (> (gbppu-cur-line ppu) 153) (ppu-mode-transition ppu gb 2))))
+         (when (> (gbppu-cur-line ppu) 153)
+           (setf (gbppu-cur-line ppu) 0)
+           (write-memory-at-addr gb #xff44 0)
+           (ppu-mode-transition ppu gb 2))))
     ; in OAM state
     (2 (when (> (gbppu-cycles ppu) (* 80 4))
          (ppu-mode-transition ppu gb 3)))
@@ -397,13 +400,15 @@
     (add-background-to-ppu-framebuffer ppu)
     (add-sprites-to-ppu-framebuffer ppu))
 
-(defun update-screen (ppu gb texture)
+(defun update-screen (ppu gb renderer texture)
   (set-interrupt-flag gb 0)
   (sdl2:update-texture
     texture
     (cffi:null-pointer)
     (static-vectors:static-vector-pointer
-      (gbppu-framebuffer ppu)) (* 160 3)))
+      (gbppu-framebuffer ppu)) (* 160 3))
+    (sdl2:render-copy renderer texture)
+    (sdl2:render-present renderer))
 
 ;; I/O
 (defun update-input-memory (gb input)
@@ -414,6 +419,16 @@
       (write-memory-at-addr gb #xff00 (logior input-val #x00)))
     (when (= input-val #x10) ; p15 start select b a
       (write-memory-at-addr gb #xff00 (logior input-val #x00)))))
+
+;; CPU
+(defun step-cpu (cpu gb)
+  (let ((instr (emu-single-op cpu gb)))
+    (when (not instr) (sdl2:push-event :quit) nil)
+    (when (and *debug* (instruction-p instr))
+       (format t "~X: ~A --> PC=~X~%" (instruction-opcode instr) (instruction-asm instr) (gbcpu-pc cpu)))
+    ;(when (= (gbcpu-pc cpu) #x1e7e) (sdl2:push-event :quit) (return nil))
+    (if (= (gbcpu-pc cpu) #x100) (setf (gb-is-bios? gb) nil))
+    t))
 
 (defparameter *out* ())
 (defparameter *width* 160)
@@ -467,25 +482,15 @@
                 (setf (gbinput-start input) nil)))
             (:idle ()
               (when (not (gb-stopped? gb))
-                (loop until (> (gbppu-cur-line ppu) 153)
-                  do
-                  (let ((instr (emu-single-op cpu gb)))
-                    (when (not instr) (sdl2:push-event :quit) (return nil))
-                    (when (and *debug* (instruction-p instr))
-                       (format t "~X: ~A --> PC=~X~%" (instruction-opcode instr) (instruction-asm instr) (gbcpu-pc cpu)))
-                    ;(when (= (gbcpu-pc cpu) #x1e7e) (sdl2:push-event :quit) (return nil))
-                    (if (= (gbcpu-pc cpu) #x100) (setf (gb-is-bios? gb) nil)))
-                    (if (= (read-memory-at-addr gb #xff02) #x81)
-                      (progn
-                        (setf *out* (cons (code-char (read-memory-at-addr gb #xff01)) *out*))
-                        (write-memory-at-addr gb #xff02 0)))
-                    (step-ppu ppu gb renderer texture)
-                    (handle-timers cpu gb)
-                    (handle-interrupts cpu gb)
-                    (update-input-memory gb input)))
-              (setf (gbppu-cur-line ppu) 0)
-              (sdl2:render-copy renderer texture)
-              (sdl2:render-present renderer))
+                (step-cpu cpu gb)
+                (if (= (read-memory-at-addr gb #xff02) #x81)
+                  (progn
+                    (setf *out* (cons (code-char (read-memory-at-addr gb #xff01)) *out*))
+                    (write-memory-at-addr gb #xff02 0)))
+                (step-ppu ppu gb renderer texture)
+                (handle-timers cpu gb)
+                (handle-interrupts cpu gb)
+                (update-input-memory gb input)))
             (:quit () t))))))))
 
 
