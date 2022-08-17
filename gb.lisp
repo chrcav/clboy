@@ -101,9 +101,9 @@
          #x800 #x900 #xa00 #xb00 #xc00 #xd00)
          (setf (aref (gbmmu-int-ram mmu) (logand addr #x1fff)) val))
        (#xe00
-        (if (< addr #xfea0) (setf (aref (gbmmu-oam mmu) (logand addr #xff)) val)))
+         (if (< addr #xfea0) (setf (aref (gbmmu-oam mmu) (logand addr #xff)) val)))
        (#xf00
-          (setf (aref (gbmmu-zero-page mmu) (logand addr #xff)) val))))))
+         (setf (aref (gbmmu-zero-page mmu) (logand addr #xff)) val))))))
 
 (defun read-memory-at-addr (mmu addr)
   (case (logand addr #xf000)
@@ -209,14 +209,64 @@
   (loop for a from addr to (+ addr 3)
         collect (read-memory-at-addr mmu a)))
 
+(defun sprite-overlaps-scanline? (ppu mmu sprite row)
+  (let ((sprite-y (car sprite))
+        (sprite-height (if (= (logand (read-memory-at-addr mmu #xff40) #x4) #x4) 16 8)))
+  (and (> sprite-y row) (<= sprite-y (+ row sprite-height)))))
+
+(defun sprite-within-viewport? (ppu mmu sprite)
+  (let* ((row (gbppu-cur-line ppu))
+         (lcdc (read-memory-at-addr mmu #xff40))
+         (sprite-x (cadr sprite))
+         (sprite-y (car sprite))
+         (sprite-height (if (= (logand lcdc #x4) #x4) 16 8))
+         (scroll-y (read-memory-at-addr mmu #xff42))
+         (scroll-x (read-memory-at-addr mmu #xff43)))
+    (and (> sprite-x scroll-x) (< sprite-x (+ scroll-x 8))
+         (> sprite-y scroll-y) (< sprite-y (+ scroll-y sprite-height)))))
+
 (defun add-sprites-to-ppu-framebuffer (ppu mmu)
   (let* ((row (gbppu-cur-line ppu))
          (scroll-y (read-memory-at-addr mmu #xff42))
          (scroll-x (read-memory-at-addr mmu #xff43)))
-    (loop for addr from #xfe00 to #xfea0
+    (loop for addr = #xfe00 then (+ addr 4)
+          while (< addr #xfea0)
           for sprite = (read-sprite mmu addr)
-          collect sprite)
+          when (sprite-overlaps-scanline? ppu mmu sprite row)
+          ;when (sprite-within-viewport? ppu mmu sprite)
+          do (add-sprite-to-ppu-framebuffer ppu mmu sprite))
   ))
+
+(defun add-sprite-to-ppu-framebuffer (ppu mmu sprite)
+  (let* ((lcdc (read-memory-at-addr mmu #xff40))
+         (row (gbppu-cur-line ppu))
+         (sprite-height (if (= (logand lcdc #x4) #x4) 16 8))
+         (sprite-y (- (car sprite) sprite-height))
+         (sprite-x (- (cadr sprite) 8))
+         (tile-no (if (= (logand lcdc #x4) #x4) (logand (caddr sprite) #xfe) (caddr sprite)))
+         (sprite-flags (cadddr sprite))
+         (sprite-y-offset (- row sprite-y))
+         (sprite-xflip (logand (ash sprite-flags -5) #x01))
+         (palette-reg (if (= (logand sprite-flags #x10) #x00) #xff48 #xff49))
+         (color-addr (+ #x8000 (* tile-no (* sprite-height 2)) (* sprite-y-offset 2)))
+         (colorbyte1 (read-memory-at-addr mmu color-addr))
+         (colorbyte2 (read-memory-at-addr mmu (+ color-addr 1))))
+    ;(format t "scanline ~A sprite-y ~A addr ~X~%" row sprite-y color-addr)
+    (loop for i from 0 to 7
+          for col = (+ sprite-x i)
+      do
+      (let* ((colorbitpos (if (= sprite-xflip #x01) (- 0 i) (- i 7)))
+            (colorval (+
+                         (logand (ash colorbyte1 colorbitpos) #x01)
+                         (* (logand (ash colorbyte2 colorbitpos) #x01) 2))))
+        ;(format t "tilemap addr ~X, tile-no ~X, color-addr ~X, colorval ~X~%" addr tile-no color-addr colorval)
+        (when (or (= (aref (gbppu-bg-buffer ppu) (+ (* row 160) col)) #x00) (= (ash sprite-flags -7) #x00))
+        (let ((palette-col (logand (ash (read-memory-at-addr mmu palette-reg) (* colorval -2)) 3)))
+        (setf (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3))) (aref COLORS (* palette-col 3))
+              (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3) 1)) (aref COLORS (+ (* palette-col 3) 1))
+              (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3) 2)) (aref COLORS (+ (* palette-col 3) 2))
+              ;(aref (gbppu-framebuffer-a ppu) (+ (* row 144 4) (* col 4) 3)) #xff
+              )))))))
 
 (defun add-background-to-ppu-framebuffer (ppu mmu)
   (let* ((row (gbppu-cur-line ppu))
@@ -255,11 +305,10 @@
 (defun maybe-do-dma (ppu mmu)
   (let ((initial (ash (read-memory-at-addr mmu #xff46) 8)))
     (when (> initial 0)
-      (format t "transferring dma~%")
       (loop for i from 0 to 159
             do
             (let ((src (+ initial i))
-                  (dest (+ #xffe00 i)))
+                  (dest (+ #xfe00 i)))
             (write-memory-at-addr mmu dest (read-memory-at-addr mmu src))))
       (write-memory-at-addr mmu #xff46 0))))
 
