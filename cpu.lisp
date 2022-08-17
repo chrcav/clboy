@@ -29,9 +29,9 @@
   (logior lsb (ash msb 8)))
 
 
-(defun get-byte-from-hl-address (cpu mmu)
+(defun get-byte-from-hl-address (cpu gb)
   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
-    (read-memory-at-addr mmu addr)))
+    (read-memory-at-addr gb addr)))
 
 (defun set-reg-pair-bc-to-val (cpu val)
   (setf (gbcpu-b cpu) (logand (ash val -8) #xff)
@@ -144,19 +144,19 @@
   (sub cpu reg val))
 
 
-(defun do-call-at-addr (cpu mmu addr)
-  (push-addr-on-stack cpu mmu (gbcpu-pc cpu))
+(defun do-call-at-addr (cpu gb addr)
+  (push-addr-on-stack cpu gb (gbcpu-pc cpu))
   (setf (gbcpu-pc cpu) addr))
 
-(defun do-rst (cpu mmu addr)
-  (push-addr-on-stack cpu mmu (gbcpu-pc cpu))
+(defun do-rst (cpu gb addr)
+  (push-addr-on-stack cpu gb (gbcpu-pc cpu))
   (setf (gbcpu-pc cpu) addr))
 
 (defun do-jump (cpu addr)
   (setf (gbcpu-pc cpu) addr))
 
-(defun do-ret (cpu mmu)
-  (let ((addr (pop-addr-from-stack cpu mmu)))
+(defun do-ret (cpu gb)
+  (let ((addr (pop-addr-from-stack cpu gb)))
     (setf (gbcpu-pc cpu) addr)))
 
 (defun flags-into-byte (flags)
@@ -172,25 +172,25 @@
                 :n  (logand (ash val -6) #x01)
                 :z  (logand (ash val -7) #x01)))
 
-(defun push-addr-on-stack (cpu mmu addr)
+(defun push-addr-on-stack (cpu gb addr)
   (let ((sp (gbcpu-sp cpu))
         (lsb (logand addr #xff))
         (msb (logand (ash addr -8) #xff)))
     (decf (gbcpu-sp cpu) 2)
-    (write-memory-at-addr mmu (- sp 1) msb)
-    (write-memory-at-addr mmu (- sp 2) lsb)))
-(defun pop-addr-from-stack (cpu mmu)
+    (write-memory-at-addr gb (- sp 1) msb)
+    (write-memory-at-addr gb (- sp 2) lsb)))
+(defun pop-addr-from-stack (cpu gb)
   (let* ((sp (gbcpu-sp cpu))
-         (lsb (read-memory-at-addr mmu sp))
-         (msb (read-memory-at-addr mmu (+ sp 1))))
+         (lsb (read-memory-at-addr gb sp))
+         (msb (read-memory-at-addr gb (+ sp 1))))
     (incf (gbcpu-sp cpu) 2)
     (logior lsb (ash msb 8))))
 
-(defun push-reg-pair-on-stack (cpu mmu reg1 reg2)
+(defun push-reg-pair-on-stack (cpu gb reg1 reg2)
   (let ((sp (gbcpu-sp cpu)))
     (decf (gbcpu-sp cpu) 2)
-    (write-memory-at-addr mmu (- sp 1) reg1)
-    (write-memory-at-addr mmu (- sp 2) reg2)))
+    (write-memory-at-addr gb (- sp 1) reg1)
+    (write-memory-at-addr gb (- sp 2) reg2)))
 
 (defun test-bit-reg (cpu val bit-pos)
   (let ((res (logand val (ash #x01 bit-pos))))
@@ -276,21 +276,21 @@
     res))
 
 
-(defun emu-single-op (cpu mmu)
+(defun emu-single-op (cpu gb)
   (if (= (gbcpu-halted cpu) #x00)
-    (let* ((op (read-memory-at-addr mmu (gbcpu-pc cpu)))
-          (instr (if (= op #xcb) (get-cb-instruction cpu mmu) (aref ops op))))
+    (let* ((op (read-memory-at-addr gb (gbcpu-pc cpu)))
+          (instr (if (= op #xcb) (get-cb-instruction cpu gb) (aref ops op))))
       (if (instruction-p instr)
         (progn (if (null (instruction-fun instr))
                (format t "Unable to run function for instruction ~X @ ~X~%" op (gbcpu-pc cpu))
-               (funcall (instruction-fun instr) cpu mmu instr))
+               (funcall (instruction-fun instr) cpu gb instr))
              instr)
       (format t "Unimplemented instruction ~X @ ~X~%" op (gbcpu-pc cpu))))
     (progn (incf (gbcpu-clock cpu) 4)
            (incf (gbcpu-div-clock cpu)))))
 
-(defun do-interrupt (cpu mmu interrupt-id)
+(defun do-interrupt (cpu gb interrupt-id)
   (setf (gbcpu-int-ena cpu) #x00)
-  (write-memory-at-addr mmu #xff0f (logand (read-memory-at-addr mmu #xff0f) (logxor (ash #x01 interrupt-id) #xff)))
-  (do-call-at-addr cpu mmu (+ (* interrupt-id 8) #x40)))
+  (write-memory-at-addr gb #xff0f (logand (read-memory-at-addr gb #xff0f) (logxor (ash #x01 interrupt-id) #xff)))
+  (do-call-at-addr cpu gb (+ (* interrupt-id 8) #x40)))
 
