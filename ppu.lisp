@@ -90,7 +90,8 @@
             (colorval (+
                          (logand (ash colorbyte1 colorbitpos) #x01)
                          (* (logand (ash colorbyte2 colorbitpos) #x01) 2))))
-        (when (or (= (aref (gbppu-bg-buffer ppu) (+ (* row 160) col)) #x00) (= (ash sprite-flags -7) #x00))
+        (when (or (= (aref (gbppu-bg-buffer ppu) (+ (* row 160) col)) #x00)
+                  (and (= (ash sprite-flags -7) #x00) (> colorval #x00)))
         (let ((palette-col (logand (ash (ppu-read-memory-at-addr ppu palette-reg) (* colorval -2)) 3)))
         ;(format t "colorval ~X pallette-col ~X~%" colorval palette-col)
         (setf (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3))) (aref COLORS (* palette-col 3))
