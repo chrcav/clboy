@@ -10,5 +10,7 @@
            :components ((:file "package")
                         (:file "opcodes")
                         (:file "cpu")
+                        (:file "ppu")
+                        (:file "cart")
                         (:file "gb")
                         ))

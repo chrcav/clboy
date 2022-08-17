@@ -1,0 +1,61 @@
+
+
+(in-package :clboy)
+
+(defstruct gbcart
+  (carttype 0)
+  (rom (make-array #x8000 :element-type '(unsigned-byte 8)))
+  (rom-offset #x4000)
+  (ram (make-array #x2000 :initial-element 0 :element-type '(unsigned-byte 8)))
+  (ram-offset #x0000)
+  (ramon nil :type boolean)
+  (rombank 1)
+  (rommask 1)
+  (rambank 0)
+  (mode 0))
+
+(defun replace-memory-with-rom (cart file)
+  (let ((rom (read-rom-data-from-file file)))
+    (setf (gbcart-rom cart) (make-array (length rom) :element-type '(unsigned-byte 8)))
+    (replace (gbcart-rom cart) rom)))
+
+(defun get-carttype-from-rom (cart) (setf (gbcart-carttype cart) (cart-read-memory-at-addr cart #x147)))
+(defun get-rommask-from-rom (cart) (setf (gbcart-rommask cart) (- (ash #x02 (cart-read-memory-at-addr cart #x148)) 1)))
+
+(defun cart-write-memory-at-addr (cart addr val)
+  (case (logand addr #xf000)
+    ((#x0000 #x1000)
+     (case (gbcart-carttype cart)
+       ((2 3) (setf (gbcart-ramon cart) (if (= val #x0a) t nil)))))
+    ((#x2000 #x3000)
+     (case (gbcart-carttype cart)
+       ((1 2 3)
+         (let ((rombank (logand (+ (logand (gbcart-rombank cart) #x60) (if (> val 1) val 1)) (gbcart-rommask cart))))
+           (setf (gbcart-rombank cart) (if (= rombank 0) 1 rombank)
+                 (gbcart-rom-offset cart) (* (if (= rombank 0) 1 rombank) #x4000))))))
+    ((#x4000 #x5000)
+     (case (gbcart-carttype cart)
+       ((1 2 3)
+         (if (= (gbcart-mode cart) #x01)
+           (let ((rambank (logand val #x03)))
+             (setf (gbcart-rambank cart) rambank
+                   (gbcart-ram-offset cart) (* rambank #x2000)))
+           (let ((rombank (logand (+ (logand (gbcart-rombank cart) #x1f) (ash (logand val #x03) 5)) (gbcart-rommask cart))))
+             (setf (gbcart-rombank cart) (if (= rombank 0) 1 rombank)
+                   (gbcart-rom-offset cart) (* (if (= rombank 0) 1 rombank) #x4000)))))))
+    ((#x6000 #x7000)
+     (case (gbcart-carttype cart)
+       ((2 3) (setf (gbcart-mode cart) (logand val #x01)))))
+    ((#xa000 #xb000)
+     (setf (aref (gbcart-ram cart) (+ (gbcart-ram-offset cart) (logand addr #x1fff))) val))))
+
+(defun cart-read-memory-at-addr (cart addr)
+  (case (logand addr #xf000)
+    ((#x0000 #x1000 #x2000 #x3000)
+      (aref (gbcart-rom cart) addr))
+    ((#x4000 #x5000 #x6000 #x7000)
+      (aref (gbcart-rom cart) (+ (gbcart-rom-offset cart) (logand addr #x3fff))))
+    ((#xa000 #xb000)
+      (aref (gbcart-ram cart) (+ (gbcart-ram-offset cart) (logand addr #x1fff))))))
+
+

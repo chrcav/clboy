@@ -15,17 +15,6 @@
   (int-ram (make-array #x2000 :initial-element 0 :element-type '(unsigned-byte 8)))
   (zero-page (make-array #x100 :initial-element 0 :element-type '(unsigned-byte 8))))
 
-(defstruct gbcart
-  (carttype 0)
-  (rom (make-array #x8000 :element-type '(unsigned-byte 8)))
-  (rom-offset #x4000)
-  (ram (make-array #x2000 :initial-element 0 :element-type '(unsigned-byte 8)))
-  (ram-offset #x0000)
-  (ramon nil :type boolean)
-  (rombank 1)
-  (rommask 1)
-  (rambank 0)
-  (mode 0))
 
 (defstruct gbinput
   (down   nil :type boolean)
@@ -37,16 +26,6 @@
   (start  nil :type boolean)
   (select nil :type boolean))
 
-(defstruct gbppu
-  (framebuffer (static-vectors:make-static-vector (* 160 144 3)))
-  (framebuffer-a (static-vectors:make-static-vector (* 160 144 4)))
-  (bg-buffer (make-array (* 144 160) :initial-element 0 :element-type '(unsigned-byte 8)))
-  (cycles 0)
-  (cur-line 0)
-  (oam (make-array #x100 :initial-element 0 :element-type '(unsigned-byte 8)))
-  (vram (make-array #x2000 :initial-element 0 :element-type '(unsigned-byte 8)))
-  (zero-page (make-array #x100 :initial-element 0 :element-type '(unsigned-byte 8)))
-  (mode 0))
 
 ;; MMU
 
@@ -172,190 +151,7 @@
       unsign-byte
       (logior unsign-byte (- (mask-field (byte 1 7) #xff)))))
 
-;; CART
-
-(defun replace-memory-with-rom (cart file)
-  (let ((rom (read-rom-data-from-file file)))
-    (setf (gbcart-rom cart) (make-array (length rom) :element-type '(unsigned-byte 8)))
-    (replace (gbcart-rom cart) rom)))
-
-(defun get-carttype-from-rom (cart) (setf (gbcart-carttype cart) (cart-read-memory-at-addr cart #x147)))
-(defun get-rommask-from-rom (cart) (setf (gbcart-rommask cart) (- (ash #x02 (cart-read-memory-at-addr cart #x148)) 1)))
-
-(defun cart-write-memory-at-addr (cart addr val)
-  (case (logand addr #xf000)
-    ((#x0000 #x1000)
-     (case (gbcart-carttype cart)
-       ((2 3) (setf (gbcart-ramon cart) (if (= val #x0a) t nil)))))
-    ((#x2000 #x3000)
-     (case (gbcart-carttype cart)
-       ((1 2 3)
-         (let ((rombank (logand (+ (logand (gbcart-rombank cart) #x60) (if (> val 1) val 1)) (gbcart-rommask cart))))
-           (setf (gbcart-rombank cart) (if (= rombank 0) 1 rombank)
-                 (gbcart-rom-offset cart) (* (if (= rombank 0) 1 rombank) #x4000))))))
-    ((#x4000 #x5000)
-     (case (gbcart-carttype cart)
-       ((1 2 3)
-         (if (= (gbcart-mode cart) #x01)
-           (let ((rambank (logand val #x03)))
-             (setf (gbcart-rambank cart) rambank
-                   (gbcart-ram-offset cart) (* rambank #x2000)))
-           (let ((rombank (logand (+ (logand (gbcart-rombank cart) #x1f) (ash (logand val #x03) 5)) (gbcart-rommask cart))))
-             (setf (gbcart-rombank cart) (if (= rombank 0) 1 rombank)
-                   (gbcart-rom-offset cart) (* (if (= rombank 0) 1 rombank) #x4000)))))))
-    ((#x6000 #x7000)
-     (case (gbcart-carttype cart)
-       ((2 3) (setf (gbcart-mode cart) (logand val #x01)))))
-    ((#xa000 #xb000)
-     (setf (aref (gbcart-ram cart) (+ (gbcart-ram-offset cart) (logand addr #x1fff))) val))))
-
-(defun cart-read-memory-at-addr (cart addr)
-  (case (logand addr #xf000)
-    ((#x0000 #x1000 #x2000 #x3000)
-      (aref (gbcart-rom cart) addr))
-    ((#x4000 #x5000 #x6000 #x7000)
-      (aref (gbcart-rom cart) (+ (gbcart-rom-offset cart) (logand addr #x3fff))))
-    ((#xa000 #xb000)
-      (aref (gbcart-ram cart) (+ (gbcart-ram-offset cart) (logand addr #x1fff))))))
-
 ;; PPU
-
-(defconstant COLORS #(255 255 255
-                      192 192 192
-                      96 96 96
-                       0  0  0))
-
-(defun ppu-write-memory-at-addr (ppu addr val)
-  (case (logand addr #xf000)
-    ((#x8000 #x9000)
-      (setf (aref (gbppu-vram ppu) (logand addr #x1fff)) val))
-    (#xf000
-     (case (logand addr #x0f00)
-       (#xe00 (if (< addr #xfea0) (setf (aref (gbppu-oam ppu) (logand addr #xff)) val)))
-       (#xf00
-        (setf (aref (gbppu-zero-page ppu) (logand addr #xff)) val))))))
-
-(defun ppu-read-memory-at-addr (ppu addr)
-  (case (logand addr #xf000)
-    ((#x8000 #x9000)
-      (aref (gbppu-vram ppu) (logand addr #x1fff)))
-    (#xf000
-     (case (logand addr #x0f00)
-       (#xe00 (if (< addr #xfea0) (aref (gbppu-oam ppu) (logand addr #xff)) 0))
-       (#xf00
-         (aref (gbppu-zero-page ppu) (logand addr #xff)))))))
-
-(defun read-sprite (ppu addr)
-  (loop for a from addr to (+ addr 3)
-        collect (ppu-read-memory-at-addr ppu a)))
-
-(defun sprite-overlaps-scanline? (ppu sprite row)
-  (let ((sprite-y (car sprite))
-        (sprite-height (if (= (logand (ppu-read-memory-at-addr ppu #xff40) #x4) #x4) 16 8)))
-  (and (> sprite-y row) (<= sprite-y (+ row sprite-height)))))
-
-(defun sprite-within-viewport? (ppu sprite)
-  (let* ((row (gbppu-cur-line ppu))
-         (lcdc (ppu-read-memory-at-addr ppu #xff40))
-         (sprite-x (cadr sprite))
-         (sprite-y (car sprite))
-         (sprite-height (if (= (logand lcdc #x4) #x4) 16 8))
-         (scroll-y (ppu-read-memory-at-addr ppu #xff42))
-         (scroll-x (ppu-read-memory-at-addr ppu #xff43)))
-    (and (> sprite-x scroll-x) (< sprite-x (+ scroll-x 8))
-         (> sprite-y scroll-y) (< sprite-y (+ scroll-y sprite-height)))))
-
-(defun add-sprites-to-ppu-framebuffer (ppu)
-  (let* ((row (gbppu-cur-line ppu))
-         (scroll-y (ppu-read-memory-at-addr ppu #xff42))
-         (scroll-x (ppu-read-memory-at-addr ppu #xff43)))
-    (loop for addr = #xfe00 then (+ addr 4)
-          while (< addr #xfea0)
-          for sprite = (read-sprite ppu addr)
-          when (sprite-overlaps-scanline? ppu sprite row)
-          ;when (sprite-within-viewport? ppu sprite)
-          do (add-sprite-to-ppu-framebuffer ppu sprite))
-  ))
-
-(defun add-sprite-to-ppu-framebuffer (ppu sprite)
-  (let* ((lcdc (ppu-read-memory-at-addr ppu #xff40))
-         (row (gbppu-cur-line ppu))
-         (sprite-height (if (= (logand lcdc #x4) #x4) 16 8))
-         (sprite-y (- (car sprite) sprite-height))
-         (sprite-x (- (cadr sprite) 8))
-         (tile-no (if (= (logand lcdc #x4) #x4) (logand (caddr sprite) #xfe) (caddr sprite)))
-         (sprite-flags (cadddr sprite))
-         (sprite-y-offset (- row sprite-y))
-         (sprite-xflip (logand (ash sprite-flags -5) #x01))
-         (palette-reg (if (= (logand sprite-flags #x10) #x00) #xff48 #xff49))
-         (color-addr (+ #x8000 (* tile-no (* sprite-height 2)) (* sprite-y-offset 2)))
-         (colorbyte1 (ppu-read-memory-at-addr ppu color-addr))
-         (colorbyte2 (ppu-read-memory-at-addr ppu (+ color-addr 1))))
-    (loop for i from 0 to 7
-          for col = (+ sprite-x i)
-      do
-      (let* ((colorbitpos (if (= sprite-xflip #x01) (- 0 i) (- i 7)))
-            (colorval (+
-                         (logand (ash colorbyte1 colorbitpos) #x01)
-                         (* (logand (ash colorbyte2 colorbitpos) #x01) 2))))
-        (when (or (= (aref (gbppu-bg-buffer ppu) (+ (* row 160) col)) #x00) (= (ash sprite-flags -7) #x00))
-        (let ((palette-col (logand (ash (ppu-read-memory-at-addr ppu palette-reg) (* colorval -2)) 3)))
-        ;(format t "colorval ~X pallette-col ~X~%" colorval palette-col)
-        (setf (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3))) (aref COLORS (* palette-col 3))
-              (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3) 1)) (aref COLORS (+ (* palette-col 3) 1))
-              (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3) 2)) (aref COLORS (+ (* palette-col 3) 2))
-              ;(aref (gbppu-framebuffer-a ppu) (+ (* row 144 4) (* col 4) 3)) #xff
-              )))))))
-
-(defun add-background-to-ppu-framebuffer (ppu)
-  (let* ((row (gbppu-cur-line ppu))
-         (scroll-y (ppu-read-memory-at-addr ppu #xff42))
-         (scroll-x (ppu-read-memory-at-addr ppu #xff43))
-         (lcdc (ppu-read-memory-at-addr ppu #xff40))
-         (tilemap-loc (if (= (logand lcdc #x08) #x08) #x9c00 #x9800))
-         (tiledata-loc (if (= (logand lcdc #x10) #x10) #x8000 #x9000)))
-    (when (< row 144)
-    (loop for col from 0 to 159
-      do
-      (let* ((yoffset (+ row scroll-y))
-             (xoffset (+ col scroll-x))
-             (addr (+ tilemap-loc (* (floor yoffset 8) 32) (floor xoffset 8)))
-            (tile-no (if (= tiledata-loc #x8000)
-                       (ppu-read-memory-at-addr ppu addr)
-                       (make-signed-from-unsigned (ppu-read-memory-at-addr ppu addr))))
-            (colorbitpos (- 7 (mod xoffset 8)))
-            (color-addr (+ tiledata-loc (* tile-no #x10) (* (mod yoffset 8) 2)))
-            (colorbyte1 (ppu-read-memory-at-addr ppu color-addr))
-            (colorbyte2 (ppu-read-memory-at-addr ppu (+ color-addr 1)))
-            (colorval (+
-                         (logand (ash colorbyte1 (- 0 colorbitpos)) #x01)
-                         (* (logand (ash colorbyte2 (- 0 colorbitpos)) #x01) 2))))
-        (setf (aref (gbppu-bg-buffer ppu) (+ (* row 160) col)) colorval)
-        (let ((palette-col (logand (ash (ppu-read-memory-at-addr ppu #xff47) (* colorval -2)) 3)))
-        (setf (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3))) (aref COLORS (* palette-col 3))
-              (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3) 1)) (aref COLORS (+ (* palette-col 3) 1))
-              (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3) 2)) (aref COLORS (+ (* palette-col 3) 2))
-              ;(aref (gbppu-framebuffer-a ppu) (+ (* row 144 4) (* col 4) 3)) #xff
-              )))))))
-
-(defun maybe-do-dma (ppu gb)
-  (let ((initial (ash (read-memory-at-addr gb #xff46) 8)))
-    (when (> initial 0)
-      (loop for i from 0 to 159
-            do
-            (let ((src (+ initial i))
-                  (dest (+ #xfe00 i)))
-            (write-memory-at-addr gb dest (read-memory-at-addr gb src))))
-      (write-memory-at-addr gb #xff46 0))))
-
-(defun check-ly-lyc (ppu gb)
-  (let ((ly (read-memory-at-addr gb #xff44))
-        (lyc (read-memory-at-addr gb #xff45)))
-    (when (= ly lyc)
-      (let ((lcd-stat (read-memory-at-addr gb #xff41))
-            (stat-int-ena #x40))
-        (write-memory-at-addr gb #xff41 (+ (logand lcd-stat #xfb) #x04))
-        (if (= (logand lcd-stat stat-int-ena) stat-int-ena) (set-interrupt-flag gb 1))))))
 
 (defun step-ppu (ppu gb renderer texture)
   (incf (gbppu-cycles ppu) (gbcpu-clock (gb-cpu gb)))
@@ -384,31 +180,8 @@
     ; in VRAM Read state
     (3 (when (> (gbppu-cycles ppu) (* 172 4))
          (render-scanline ppu)
-         (ppu-mode-transition ppu gb 0)))))
-
-(defun ppu-mode-transition (ppu gb mode)
-  (setf (gbppu-cycles ppu) 0)
-  (setf (gbppu-mode ppu) mode)
-  (let ((lcd-stat (read-memory-at-addr gb #xff41))
-        (stat-int-ena (ash #x8 mode)))
-    (write-memory-at-addr gb #xff41 (+ (logand lcd-stat #xfc) mode))
-    (if (< mode 3)
-      (if (= (logand lcd-stat stat-int-ena) stat-int-ena) (set-interrupt-flag gb 1)))))
-
-
-(defun render-scanline (ppu)
-    (add-background-to-ppu-framebuffer ppu)
-    (add-sprites-to-ppu-framebuffer ppu))
-
-(defun update-screen (ppu gb renderer texture)
-  (set-interrupt-flag gb 0)
-  (sdl2:update-texture
-    texture
-    (cffi:null-pointer)
-    (static-vectors:static-vector-pointer
-      (gbppu-framebuffer ppu)) (* 160 3))
-    (sdl2:render-copy renderer texture)
-    (sdl2:render-present renderer))
+         (ppu-mode-transition ppu gb 0))))
+  t)
 
 ;; I/O
 (defun update-input-memory (gb input)
