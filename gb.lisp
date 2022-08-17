@@ -138,6 +138,7 @@
 
 ;; interrupts
 (defun handle-interrupts (cpu mmu)
+  (setf (gbcpu-halted cpu) #x00)
   (if (= (gbcpu-int-ena cpu) #x01)
       ; VBLANK interupt
       (if (= (logand (logand (read-memory-at-addr mmu #xffff) #x01) (logand (read-memory-at-addr mmu #xff0f) #x01)) #x01)
@@ -156,7 +157,7 @@
         (do-interrupt cpu mmu 4))))))))
 
 (defun set-interrupt-flag (mmu bit-pos)
-  (write-memory-at-addr mmu #xff05 (logior (read-memory-at-addr mmu #xff05) (ash #x01 (- 0 bit-pos)))))
+  (write-memory-at-addr mmu #xff0f (logior (read-memory-at-addr mmu #xff0f) (ash #x01 bit-pos))))
 
 ;; timers
 (defun handle-timers (cpu mmu)
@@ -176,7 +177,7 @@
          (new-ticks (+ cur-ticks ticks)))
     (setf (gbcpu-clock cpu) remainder)
     (if (> new-ticks #xff)
-      (progn (write-memory-at-addr mmu #xff0f (logior (read-memory-at-addr mmu #xff0f) #x04))
+      (progn (set-interrupt-flag mmu 2)
              (write-memory-at-addr mmu #xff05 (+ (read-memory-at-addr mmu #xff06) (logand new-ticks #xff))))
       (write-memory-at-addr mmu #xff05 (logand new-ticks #xff)))))
 

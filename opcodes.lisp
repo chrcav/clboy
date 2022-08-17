@@ -54,7 +54,7 @@
 (setf (aref ops #x07) (make-instruction
                         :opcode #x07 :bytes 1 :cycles '(1 0) :asm '(:rlca)
                         :fun (lambda (cpu mmu instr)
-                               (setf (gbcpu-a cpu ) (rot-left-c-reg cpu (gbcpu-a cpu))
+                               (setf (gbcpu-a cpu) (rot-left-c-reg cpu (gbcpu-a cpu))
                                      (gbflags-z (gbcpu-flags cpu)) 0)
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #x08) (make-instruction
@@ -106,7 +106,7 @@
 (setf (aref ops #x0f) (make-instruction
                         :opcode #x0f :bytes 1 :cycles '(1 0) :asm '(:rrca)
                         :fun (lambda (cpu mmu instr)
-                               (setf (gbcpu-a cpu ) (rot-right-c-reg cpu (gbcpu-a cpu))
+                               (setf (gbcpu-a cpu) (rot-right-c-reg cpu (gbcpu-a cpu))
                                      (gbflags-z (gbcpu-flags cpu)) 0)
                                (incr-cpu-counters cpu instr))))
 
@@ -114,8 +114,8 @@
 (setf (aref ops #x10) (make-instruction
                         :opcode #x10 :bytes 1 :cycles '(1 0) :asm '(:stop)
                         :fun (lambda (cpu mmu instr)
-                               (if (= (gbcpu-int-ena cpu) 1)
-                                 (setf (gb-stopped? *gb*) t))
+                               (setf (gb-stopped? *gb*) t)
+                               (write-memory-at-addr mmu #xff04 0)
                                (incr-cpu-counters cpu instr))))
 
 (setf (aref ops #x11) (make-instruction
@@ -157,7 +157,7 @@
 (setf (aref ops #x17) (make-instruction
                         :opcode #x17 :bytes 1 :cycles '(1 0) :asm '(:rla)
                         :fun (lambda (cpu mmu instr)
-                               (setf (gbcpu-a cpu ) (rot-left-reg cpu (gbcpu-a cpu))
+                               (setf (gbcpu-a cpu) (rot-left-reg cpu (gbcpu-a cpu))
                                      (gbflags-z (gbcpu-flags cpu)) 0)
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #x18) (make-instruction
@@ -209,7 +209,7 @@
 (setf (aref ops #x1f) (make-instruction
                         :opcode #x1f :bytes 1 :cycles '(1 0) :asm '(:rra)
                         :fun (lambda (cpu mmu instr)
-                               (setf (gbcpu-a cpu ) (rot-right-reg cpu (gbcpu-a cpu))
+                               (setf (gbcpu-a cpu) (rot-right-reg cpu (gbcpu-a cpu))
                                      (gbflags-z (gbcpu-flags cpu)) 0)
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #x20) (make-instruction
@@ -739,8 +739,7 @@
 (setf (aref ops #x76) (make-instruction
                         :opcode #x76 :bytes 1 :cycles '(1 0) :asm '(:halt)
                         :fun (lambda (cpu mmu instr)
-                               (if (= (gbcpu-int-ena cpu) 1)
-                                 (setf (gbcpu-halted cpu) #x01))
+                               (setf (gbcpu-halted cpu) #x01)
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #x77) (make-instruction
                         :opcode #x77 :bytes 1 :cycles '(2 0) :asm '(:ld "(HL),A")

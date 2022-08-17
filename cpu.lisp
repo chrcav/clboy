@@ -290,7 +290,7 @@
            (incf (gbcpu-div-clock cpu)))))
 
 (defun do-interrupt (cpu mmu interrupt-id)
-  (setf (gbcpu-halted cpu) #x00)
+  (setf (gbcpu-int-ena cpu) #x00)
   (write-memory-at-addr mmu #xff0f (logand (read-memory-at-addr mmu #xff0f) (logxor (ash #x01 interrupt-id) #xff)))
   (do-call-at-addr cpu mmu (+ (* interrupt-id 8) #x40)))
 
