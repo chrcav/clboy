@@ -3,7 +3,6 @@
 
 (in-package :clboy)
 
-;; TODO make ram and rom dependent on rom header info
 (defstruct gb
   (cpu (make-gbcpu) :type gbcpu)
   (ppu (make-gbppu))
@@ -30,7 +29,6 @@
 
 ;; MMU
 
-;; TODO see if I can split mbc reg writes into separate functions.
 (defun write-memory-at-addr (gb addr val)
   (case (logand addr #xf000)
     ((#x0000 #x1000 #x2000 #x3000 #x4000
@@ -302,7 +300,10 @@
                     (handle-keyup input keysym))
             (:idle ()
               (when (not (gb-stopped? gb))
-                (step-cpu cpu gb)
+                (loop while (step-cpu cpu gb)
+                      for cyc = 0 then (+ cyc (gbcpu-clock cpu))
+                      while (< cyc 5000)
+                      do
                 (if (= (read-memory-at-addr gb #xff02) #x81)
                   (progn
                     (setf *out* (cons (code-char (read-memory-at-addr gb #xff01)) *out*))
@@ -320,6 +321,7 @@
   (replace-memory-with-rom (gb-cart *gb*) loaded-rom)
   (get-carttype-from-rom (gb-cart *gb*))
   (get-rommask-from-rom (gb-cart *gb*))
+  (get-ramsize-from-rom (gb-cart *gb*))
   (write-memory-at-addr *gb* #xff00 #xff))
 
 (defun dump-mem-region (start end)
@@ -354,6 +356,7 @@
 (replace-memory-with-rom (gb-cart *gb*) loaded-rom)
 (get-carttype-from-rom (gb-cart *gb*))
 (get-rommask-from-rom (gb-cart *gb*))
+(get-ramsize-from-rom (gb-cart *gb*))
 
 (write-memory-at-addr *gb* #xff00 #xff)
 
