@@ -24,7 +24,8 @@
   (a      nil :type boolean)
   (b      nil :type boolean)
   (start  nil :type boolean)
-  (select nil :type boolean))
+  (select nil :type boolean)
+  (reg #xff :type (unsigned-byte 8)))
 
 
 ;; MMU
@@ -48,6 +49,10 @@
         (ppu-write-memory-at-addr (gb-ppu gb) addr val))
        (#xf00
         (case (logand addr #x00f0)
+          (#x00
+           (case
+             (logand addr #x000f) (#x0 (setf (gbinput-reg (gb-input gb)) val))
+             (otherwise (setf (aref (gb-zero-page gb) (logand addr #xff)) val))))
           (#x40 (ppu-write-memory-at-addr (gb-ppu gb) addr val))
           (otherwise (setf (aref (gb-zero-page gb) (logand addr #xff)) val))))))))
 
@@ -73,6 +78,10 @@
           (ppu-read-memory-at-addr (gb-ppu gb) addr))
         (#xf00
           (case (logand addr #x00f0)
+            (#x00
+             (case (logand addr #x000f)
+               (#x0 (input-read-memory (gb-input gb)))
+               (otherwise (aref (gb-zero-page gb) (logand addr #xff)))))
             (#x40 (ppu-read-memory-at-addr (gb-ppu gb) addr))
             (otherwise (aref (gb-zero-page gb) (logand addr #xff)))))))))
 
@@ -184,14 +193,81 @@
   t)
 
 ;; I/O
-(defun update-input-memory (gb input)
-  (let ((input-val (logand (read-memory-at-addr gb #xff00) #x30)))
-    (when (= input-val #x30) ; both p14 and p15 inactive
-      (write-memory-at-addr gb #xff00 (logior input-val #x00)))
-    (when (= input-val #x20) ; p14 down up left right
-      (write-memory-at-addr gb #xff00 (logior input-val #x00)))
-    (when (= input-val #x10) ; p15 start select b a
-      (write-memory-at-addr gb #xff00 (logior input-val #x00)))))
+
+(defun get-p14-byte (input)
+   ; p14 down up left right
+  (+ (if (gbinput-down input) #x0 #x8)
+     (if (gbinput-up input) #x0 #x4)
+     (if (gbinput-left input) #x0 #x2)
+     (if (gbinput-right input) #x0 #x1)))
+
+(defun get-p15-byte (input)
+ ; p15 start select b a
+  (+ (if (gbinput-start input) #x0 #x8)
+     (if (gbinput-select input) #x0 #x4)
+     (if (gbinput-b input) #x0 #x2)
+     (if (gbinput-a input) #x0 #x1)))
+
+(defun input-read-memory (input)
+  (let ((input-val (logand (gbinput-reg input) #x30))
+        (p14 (get-p14-byte input))
+        (p15 (get-p15-byte input)))
+    (if (= input-val #x30) ; both p14 and p15 inactive
+      (logior input-val #x0f)
+    (if (= input-val #x20)
+      (+ input-val (get-p14-byte input))
+    (if (= input-val #x10)
+      (+ input-val (get-p15-byte input))
+      #x0f)))))
+
+(defun handle-keyup (input keysym)
+  (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-escape)
+    (sdl2:push-event :quit))
+  (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-w)
+    (setf (gbinput-up input) nil))
+  (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-a)
+    (setf (gbinput-left input) nil))
+  (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-s)
+    (setf (gbinput-down input) nil))
+  (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-d)
+    (setf (gbinput-right input) nil))
+  (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-space)
+    (setf (gbinput-start input) nil))
+  (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-backspace)
+    (setf (gbinput-select input) nil))
+  (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-k)
+    (setf (gbinput-b input) nil))
+  (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-j)
+    (setf (gbinput-a input) nil))
+  )
+
+(defun handle-keydown (gb input keysym)
+  (setf (gb-stopped? gb) nil)
+  (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-w)
+    (set-interrupt-flag gb 4)
+    (setf (gbinput-up input) t))
+  (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-a)
+    (set-interrupt-flag gb 4)
+    (setf (gbinput-left input) t))
+  (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-s)
+    (set-interrupt-flag gb 4)
+    (setf (gbinput-down input) t))
+  (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-d)
+    (set-interrupt-flag gb 4)
+    (setf (gbinput-right input) t))
+  (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-space)
+    (set-interrupt-flag gb 4)
+    (setf (gbinput-start input) t))
+  (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-backspace)
+    (set-interrupt-flag gb 4)
+    (setf (gbinput-select input) t))
+  (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-k)
+    (set-interrupt-flag gb 4)
+    (setf (gbinput-b input) t))
+  (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-j)
+    (set-interrupt-flag gb 4)
+    (setf (gbinput-a input) t))
+  )
 
 ;; CPU
 (defun step-cpu (cpu gb)
@@ -218,42 +294,12 @@
   (sdl2:with-init (:everything)
     (sdl2:with-window (win :title "CL-Boy" :flags '(:shown :opengl) :w (* *width* *scale*) :h (* *height* *scale*))
       (sdl2:with-renderer (renderer win)
-				(let ((texture (sdl2:create-texture renderer :rgb24 :streaming 160 144)))
+        (let ((texture (sdl2:create-texture renderer :rgb24 :streaming 160 144)))
           (sdl2:with-event-loop (:method :poll)
             (:keydown (:keysym keysym)
-              (setf (gb-stopped? gb) nil)
-              (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-w)
-                (set-interrupt-flag gb 4)
-                (setf (gbinput-up input) t))
-              (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-a)
-                (set-interrupt-flag gb 4)
-                (setf (gbinput-left input) t))
-              (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-s)
-                (set-interrupt-flag gb 4)
-                (setf (gbinput-down input) t))
-              (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-d)
-                (set-interrupt-flag gb 4)
-                (setf (gbinput-right input) t))
-              (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-space)
-                (set-interrupt-flag gb 4)
-                (setf (gbinput-start input) t)))
+                      (handle-keydown gb input keysym))
             (:keyup (:keysym keysym)
-             (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-escape)
-               (sdl2:push-event :quit))
-              (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-w)
-                (set-interrupt-flag gb 4)
-                (setf (gbinput-up input) nil))
-              (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-a)
-                (set-interrupt-flag gb 4)
-                (setf (gbinput-left input) nil))
-              (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-s)
-                (set-interrupt-flag gb 4)
-                (setf (gbinput-down input) nil))
-              (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-d)
-                (set-interrupt-flag gb 4)
-                (setf (gbinput-right input) nil))
-              (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-space)
-                (setf (gbinput-start input) nil)))
+                    (handle-keyup input keysym))
             (:idle ()
               (when (not (gb-stopped? gb))
                 (step-cpu cpu gb)
@@ -263,8 +309,7 @@
                     (write-memory-at-addr gb #xff02 0)))
                 (step-ppu ppu gb renderer texture)
                 (handle-timers cpu gb)
-                (handle-interrupts cpu gb)
-                (update-input-memory gb input)))
+                (handle-interrupts cpu gb)))
             (:quit () t))))))))
 
 
@@ -302,9 +347,9 @@
 ;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/06-ld r,r.gb") ; PASSED
 ;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/07-jr,jp,call,ret,rst.gb") ; PASSED
 ;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/08-misc instrs.gb") ; PASSED
-;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/09-op r,r.gb")
+;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/09-op r,r.gb") ; PASSED
 ;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/10-bit ops.gb") ; PASSED
-;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/11-op a,(hl).gb")
+;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/11-op a,(hl).gb") ; PASSED
 
 (replace-memory-with-rom (gb-cart *gb*) loaded-rom)
 (get-carttype-from-rom (gb-cart *gb*))

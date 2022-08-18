@@ -1786,9 +1786,9 @@
                                     (write-memory-at-addr gb addr (swap-reg cpu (read-memory-at-addr gb addr)))
                                     (incr-cpu-counters cpu instr)))))
 (setf (aref cb-ops #x37) (make-instruction
-                           :opcode #x37 :bytes 2 :cycles '(2 0) :asm '(:swap "(HL)")
+                           :opcode #x37 :bytes 2 :cycles '(2 0) :asm '(:swap "A")
                            :fun (lambda (cpu gb instr)
-                                  (set-reg-pair-hl-to-val cpu (swap-reg cpu (get-byte-from-hl-address cpu gb)))
+                                  (setf (gbcpu-a cpu ) (swap-reg cpu (gbcpu-a cpu)))
                                   (incr-cpu-counters cpu instr))))
 
 ;; SRL
