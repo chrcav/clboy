@@ -143,6 +143,26 @@
 (defun cp-reg-with-val (cpu reg val)
   (sub cpu reg val))
 
+(defun daa (cpu)
+  (let* ((a (gbcpu-a cpu))
+         (cor-lsb
+           (if (or (= (gbflags-h (gbcpu-flags cpu)) #x01)
+                   (and (= (gbflags-n (gbcpu-flags cpu)) #x00) (> (logand a #xf) #x09)))
+             #x06
+             #x00))
+         (cor-msb
+           (if (or (= (gbflags-c (gbcpu-flags cpu)) #x01)
+                   (and (= (gbflags-n (gbcpu-flags cpu)) #x00) (> a #x99)))
+             #x60
+             #x00))
+         (res
+           (if (= (gbflags-n (gbcpu-flags cpu)) #x01)
+             (- a (+ cor-lsb cor-msb))
+             (+ a (+ cor-lsb cor-msb)))))
+    (setf (gbcpu-a cpu) (logand res #xff)
+          (gbflags-z (gbcpu-flags cpu)) (if (= (logand res #xff) #x00) #x01 #x00)
+          (gbflags-h (gbcpu-flags cpu)) #x00
+          (gbflags-c (gbcpu-flags cpu)) (if (= cor-msb #x60) #x01 #x00))))
 
 (defun do-call-at-addr (cpu gb addr)
   (push-addr-on-stack cpu gb (gbcpu-pc cpu))

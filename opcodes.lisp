@@ -259,24 +259,8 @@
 (setf (aref ops #x27) (make-instruction
                         :opcode #x27 :bytes 1 :cycles '(1 0) :asm '(:daa)
                         :fun (lambda (cpu gb instr)
-                               (let* ((a (gbcpu-a cpu))
-                                      (cor-lsb (if (or
-                                                     (= (gbflags-h (gbcpu-flags cpu)) #x01)
-                                                     (> (logand a #x0f) #x09))
-                                                 #x06
-                                                 #x00))
-                                      (correction (logior cor-lsb (if (or
-                                                                        (= (gbflags-c (gbcpu-flags cpu)) #x01)
-                                                                        (> a #x99))
-                                                                    #x60
-                                                                    #x00)))
-                                      (res (if (= (gbflags-n (gbcpu-flags cpu)) #x01)
-                                             (sub cpu a correction)
-                                             (add cpu a correction))))
-                                 (setf (gbcpu-a cpu) (logand res #xff)
-                                       (gbflags-h (gbcpu-flags cpu)) #x00
-                                       (gbflags-c (gbcpu-flags cpu)) (if (> res #x99) #x01 #x00))
-                                 (incr-cpu-counters cpu instr)))))
+                               (daa cpu)
+                               (incr-cpu-counters cpu instr))))
 
 (setf (aref ops #x28) (make-instruction
                         :opcode #x28 :bytes 2 :cycles '(2 1) :asm '(:jr "Z,i8")

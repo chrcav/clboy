@@ -199,7 +199,8 @@
     (when (not instr) (sdl2:push-event :quit) nil)
     (when (and *debug* (instruction-p instr))
        (format t "~X: ~A --> PC=~X~%" (instruction-opcode instr) (instruction-asm instr) (gbcpu-pc cpu)))
-    ;(when (= (gbcpu-pc cpu) #x1e7e) (sdl2:push-event :quit) (return nil))
+    ;(when (= (gbcpu-pc cpu) #xc33d) (sdl2:push-event :quit) nil)
+    ;(when (= (instruction-opcode instr) #x27) (sdl2:push-event :quit) nil)
     (if (= (gbcpu-pc cpu) #x100) (setf (gb-is-bios? gb) nil))
     t))
 
@@ -293,7 +294,7 @@
 (defparameter loaded-rom "./opus1.gb")
 ;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/instr_timing/instr_timing.gb") ; PASSED
 ;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/cpu_instrs.gb")
-;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/01-special.gb")
+;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/01-special.gb") ; PASSED
 ;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/02-interrupts.gb")
 ;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/03-op sp,hl.gb") ; PASSED
 ;(defparameter loaded-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/04-op r,imm.gb") ; PASSED
