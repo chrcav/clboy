@@ -161,33 +161,34 @@
 ;; PPU
 
 (defun step-ppu (ppu gb renderer texture)
-  (incf (gbppu-cycles ppu) (gbcpu-clock (gb-cpu gb)))
-  (maybe-do-dma ppu gb)
-  (check-ly-lyc ppu gb)
-  (case (gbppu-mode ppu)
-    ; in Hblank state
-    (0 (when (> (gbppu-cycles ppu) (* 204 4))
-         (incf (gbppu-cur-line ppu))
-         (write-memory-at-addr gb #xff44 (gbppu-cur-line ppu))
-         (if (= (gbppu-cur-line ppu) 144)
-           (progn (ppu-mode-transition ppu gb 1)
-                  (update-screen ppu gb renderer texture))
-           (ppu-mode-transition ppu gb 2))))
-    ; in Vblank state
-    (1 (when (> (gbppu-cycles ppu) (* 456 4))
-         (incf (gbppu-cur-line ppu))
-         (write-memory-at-addr gb #xff44 (gbppu-cur-line ppu))
-         (when (> (gbppu-cur-line ppu) 153)
-           (setf (gbppu-cur-line ppu) 0)
-           (write-memory-at-addr gb #xff44 0)
-           (ppu-mode-transition ppu gb 2))))
-    ; in OAM state
-    (2 (when (> (gbppu-cycles ppu) (* 80 4))
-         (ppu-mode-transition ppu gb 3)))
-    ; in VRAM Read state
-    (3 (when (> (gbppu-cycles ppu) (* 172 4))
-         (render-scanline ppu)
-         (ppu-mode-transition ppu gb 0))))
+  (when (gbppu-ppu-enabled? ppu)
+    (incf (gbppu-cycles ppu) (gbcpu-clock (gb-cpu gb)))
+    (maybe-do-dma ppu gb)
+    (check-ly-lyc ppu gb)
+    (case (gbppu-mode ppu)
+      ; in Hblank state
+      (0 (when (> (gbppu-cycles ppu) (* 204 4))
+           (incf (gbppu-cur-line ppu))
+           (write-memory-at-addr gb #xff44 (gbppu-cur-line ppu))
+           (if (= (gbppu-cur-line ppu) 144)
+             (progn (ppu-mode-transition ppu gb 1)
+                    (update-screen ppu gb renderer texture))
+             (ppu-mode-transition ppu gb 2))))
+      ; in Vblank state
+      (1 (when (> (gbppu-cycles ppu) (* 456 4))
+           (incf (gbppu-cur-line ppu))
+           (write-memory-at-addr gb #xff44 (gbppu-cur-line ppu))
+           (when (> (gbppu-cur-line ppu) 153)
+             (setf (gbppu-cur-line ppu) 0)
+             (write-memory-at-addr gb #xff44 0)
+             (ppu-mode-transition ppu gb 2))))
+      ; in OAM state
+      (2 (when (> (gbppu-cycles ppu) (* 80 4))
+           (ppu-mode-transition ppu gb 3)))
+      ; in VRAM Read state
+      (3 (when (> (gbppu-cycles ppu) (* 172 4))
+           (render-scanline ppu)
+           (ppu-mode-transition ppu gb 0)))))
   t)
 
 ;; I/O
@@ -310,7 +311,7 @@
                     (write-memory-at-addr gb #xff02 0)))
                 (step-ppu ppu gb renderer texture)
                 (handle-timers cpu gb)
-                (handle-interrupts cpu gb)))
+                (handle-interrupts cpu gb))))
             (:quit () t))))))))
 
 

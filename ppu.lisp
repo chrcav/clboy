@@ -10,12 +10,24 @@
   (oam (make-array #x100 :initial-element 0 :element-type '(unsigned-byte 8)))
   (vram (make-array #x2000 :initial-element 0 :element-type '(unsigned-byte 8)))
   (zero-page (make-array #x100 :initial-element 0 :element-type '(unsigned-byte 8)))
-  (mode 0))
+  (mode 0)
+  (ppu-enabled? t :type boolean)
+  (window-enabled? nil :type boolean)
+  (obj-enabled? nil :type boolean)
+  (bgwin-enabled? t :type boolean))
 
 (defconstant COLORS #(255 255 255
                       192 192 192
                       96 96 96
                        0  0  0))
+
+(defun write-new-lcdc-control (ppu val)
+  (setf (aref (gbppu-zero-page ppu) #x40) val
+        (gbppu-ppu-enabled? ppu) (> (logand val #x80) 0)
+        (gbppu-window-enabled? ppu) (> (logand val #x20) 0)
+        (gbppu-obj-enabled? ppu) (> (logand val #x02) 0)
+        (gbppu-bgwin-enabled? ppu) (> (logand val #x01) 0)
+        ))
 
 (defun ppu-write-memory-at-addr (ppu addr val)
   (case (logand addr #xf000)
@@ -25,7 +37,9 @@
      (case (logand addr #x0f00)
        (#xe00 (if (< addr #xfea0) (setf (aref (gbppu-oam ppu) (logand addr #xff)) val)))
        (#xf00
-        (setf (aref (gbppu-zero-page ppu) (logand addr #xff)) val))))))
+        (case (logand addr #x00ff)
+          (#x40 (write-new-lcdc-control ppu val))
+          (otherwise (setf (aref (gbppu-zero-page ppu) (logand addr #xff)) val))))))))
 
 (defun ppu-read-memory-at-addr (ppu addr)
   (case (logand addr #xf000)
@@ -85,6 +99,7 @@
          (colorbyte2 (ppu-read-memory-at-addr ppu (+ color-addr 1))))
     (loop for i from 0 to 7
           for col = (+ sprite-x i)
+          when (and (>= col 0) (< col 160))
       do
       (let* ((colorbitpos (if (= sprite-xflip #x01) (- 0 i) (- i 7)))
             (colorval (+
@@ -161,8 +176,11 @@
 
 
 (defun render-scanline (ppu)
+  (when (gbppu-bgwin-enabled? ppu)
     (add-background-to-ppu-framebuffer ppu)
-    (add-sprites-to-ppu-framebuffer ppu))
+    (when (gbppu-window-enabled? ppu)))
+  (when (gbppu-obj-enabled? ppu)
+    (add-sprites-to-ppu-framebuffer ppu)))
 
 (defun update-screen (ppu gb renderer texture)
   (set-interrupt-flag gb 0)
