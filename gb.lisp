@@ -160,7 +160,7 @@
 
 ;; PPU
 
-(defun step-ppu (ppu gb renderer texture)
+(defun step-ppu (ppu gb texture)
   (when (and (not (gbppu-ppu-enabled? ppu))
              (> (gbppu-cycles ppu) 0))
     (setf (gbppu-cycles ppu) 0)
@@ -176,7 +176,7 @@
            (write-memory-at-addr gb #xff44 (gbppu-cur-line ppu))
            (if (> (gbppu-cur-line ppu) 143)
              (progn (ppu-mode-transition ppu gb 1)
-                    (update-screen ppu gb renderer texture))
+                    (update-screen ppu gb texture))
              (ppu-mode-transition ppu gb 2))))
       ; in Vblank state
       (1 (when (> (gbppu-cycles ppu) (* 456 4))
@@ -309,9 +309,11 @@
                   (progn
                     (setf *out* (cons (code-char (read-memory-at-addr gb #xff01)) *out*))
                     (write-memory-at-addr gb #xff02 0)))
-                (step-ppu ppu gb renderer texture)
+                (step-ppu ppu gb texture)
                 (handle-timers cpu gb)
-                (handle-interrupts cpu gb))))
+                (handle-interrupts cpu gb)))
+              (sdl2:render-copy renderer texture)
+              (sdl2:render-present renderer))
             (:quit () t))))))))
 
 

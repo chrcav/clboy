@@ -29,7 +29,7 @@
         (gbppu-bgwin-enabled? ppu) (> (logand val #x01) 0)))
 
 (defun ppu-write-memory-at-addr (ppu addr val)
-  (case (logand addr #xf000)
+  (ecase (logand addr #xf000)
     ((#x8000 #x9000)
       (setf (aref (gbppu-vram ppu) (logand addr #x1fff)) val))
     (#xf000
@@ -41,7 +41,7 @@
           (otherwise (setf (aref (gbppu-zero-page ppu) (logand addr #xff)) val))))))))
 
 (defun ppu-read-memory-at-addr (ppu addr)
-  (case (logand addr #xf000)
+  (ecase (logand addr #xf000)
     ((#x8000 #x9000)
       (aref (gbppu-vram ppu) (logand addr #x1fff)))
     (#xf000
@@ -55,9 +55,9 @@
         collect (ppu-read-memory-at-addr ppu a)))
 
 (defun sprite-overlaps-scanline? (ppu sprite row)
-  (let ((sprite-y (car sprite))
-        (sprite-height (if (= (logand (ppu-read-memory-at-addr ppu #xff40) #x4) #x4) 16 8)))
-  (and (> sprite-y row) (<= sprite-y (+ row sprite-height)))))
+  (let ((sprite-height (if (= (logand (ppu-read-memory-at-addr ppu #xff40) #x4) #x4) 16 8))
+        (sprite-y (- (car sprite) 16)))
+  (and (>= row sprite-y) (< row (+ sprite-y sprite-height)))))
 
 (defun sprite-within-viewport? (ppu sprite)
   (let* ((row (gbppu-cur-line ppu))
@@ -86,21 +86,24 @@
   (let* ((lcdc (ppu-read-memory-at-addr ppu #xff40))
          (row (gbppu-cur-line ppu))
          (sprite-height (if (= (logand lcdc #x4) #x4) 16 8))
-         (sprite-y (- (car sprite) sprite-height))
+         (sprite-y (- (car sprite) 16))
          (sprite-x (- (cadr sprite) 8))
          (tile-no (if (= (logand lcdc #x4) #x4) (logand (caddr sprite) #xfe) (caddr sprite)))
          (sprite-flags (cadddr sprite))
          (sprite-y-offset (- row sprite-y))
-         (sprite-xflip (logand (ash sprite-flags -5) #x01))
+         (sprite-xflip? (> (logand sprite-flags #x20) 0))
+         (sprite-yflip? (> (logand sprite-flags #x40) 0))
          (palette-reg (if (= (logand sprite-flags #x10) #x00) #xff48 #xff49))
-         (color-addr (+ #x8000 (* tile-no 16) (* sprite-y-offset 2)))
+         (color-addr
+           (+ #x8000 (* tile-no 16)
+              (* (if sprite-yflip? (- sprite-height sprite-y-offset) sprite-y-offset) 2)))
          (colorbyte1 (ppu-read-memory-at-addr ppu color-addr))
          (colorbyte2 (ppu-read-memory-at-addr ppu (+ color-addr 1))))
     (loop for i from 0 to 7
           for col = (+ sprite-x i)
           when (and (>= col 0) (< col 160))
       do
-      (let* ((colorbitpos (if (= sprite-xflip #x01) (- 0 i) (- i 7)))
+      (let* ((colorbitpos (if sprite-xflip? (- 0 i) (- i 7)))
             (colorval (+
                          (logand (ash colorbyte1 colorbitpos) #x01)
                          (* (logand (ash colorbyte2 colorbitpos) #x01) 2))))
@@ -108,6 +111,39 @@
                   (and (= (ash sprite-flags -7) #x00) (> colorval #x00)))
         (let ((palette-col (logand (ash (ppu-read-memory-at-addr ppu palette-reg) (* colorval -2)) 3)))
         ;(format t "colorval ~X pallette-col ~X~%" colorval palette-col)
+        (setf (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3))) (aref COLORS (* palette-col 3))
+              (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3) 1)) (aref COLORS (+ (* palette-col 3) 1))
+              (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3) 2)) (aref COLORS (+ (* palette-col 3) 2))
+              ;(aref (gbppu-framebuffer-a ppu) (+ (* row 144 4) (* col 4) 3)) #xff
+              )))))))
+
+(defun add-window-to-ppu-framebuffer (ppu)
+  (let* ((row (gbppu-cur-line ppu))
+         (scroll-y (ppu-read-memory-at-addr ppu #xff42))
+         (scroll-x (ppu-read-memory-at-addr ppu #xff43))
+         (w-y (ppu-read-memory-at-addr ppu #xff4a))
+         (w-x (ppu-read-memory-at-addr ppu #xff4b))
+         (lcdc (ppu-read-memory-at-addr ppu #xff40))
+         (tilemap-loc (if (= (logand lcdc #x40) #x40) #x9c00 #x9800))
+         (tiledata-loc (if (= (logand lcdc #x10) #x10) #x8000 #x9000)))
+    (when (and (< row 144) (>= row w-y))
+    (loop for col from 0 to 159
+      do
+      (let* ((yoffset (+ (- row w-y) scroll-y))
+             (xoffset (+ (- col w-x) scroll-x))
+             (addr (+ tilemap-loc (* (floor yoffset 8) 32) (floor xoffset 8)))
+            (tile-no (if (= tiledata-loc #x8000)
+                       (ppu-read-memory-at-addr ppu addr)
+                       (make-signed-from-unsigned (ppu-read-memory-at-addr ppu addr))))
+            (colorbitpos (- 7 (mod xoffset 8)))
+            (color-addr (+ tiledata-loc (* tile-no #x10) (* (mod yoffset 8) 2)))
+            (colorbyte1 (ppu-read-memory-at-addr ppu color-addr))
+            (colorbyte2 (ppu-read-memory-at-addr ppu (+ color-addr 1)))
+            (colorval (+
+                         (logand (ash colorbyte1 (- 0 colorbitpos)) #x01)
+                         (* (logand (ash colorbyte2 (- 0 colorbitpos)) #x01) 2))))
+        (setf (aref (gbppu-bg-buffer ppu) (+ (* row 160) col)) colorval)
+        (let ((palette-col (logand (ash (ppu-read-memory-at-addr ppu #xff47) (* colorval -2)) 3)))
         (setf (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3))) (aref COLORS (* palette-col 3))
               (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3) 1)) (aref COLORS (+ (* palette-col 3) 1))
               (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3) 2)) (aref COLORS (+ (* palette-col 3) 2))
@@ -175,18 +211,17 @@
 
 
 (defun render-scanline (ppu)
-  (when (gbppu-bgwin-enabled? ppu)
+  (when (gbppu-bgwin-enabled? ppu) ; TODO this should trigger the background losing priority
     (add-background-to-ppu-framebuffer ppu)
-    (when (gbppu-window-enabled? ppu)))
+    (when (gbppu-window-enabled? ppu))
+      (add-window-to-ppu-framebuffer ppu))
   (when (gbppu-obj-enabled? ppu)
     (add-sprites-to-ppu-framebuffer ppu)))
 
-(defun update-screen (ppu gb renderer texture)
+(defun update-screen (ppu gb texture)
   (set-interrupt-flag gb 0)
   (sdl2:update-texture
     texture
     (cffi:null-pointer)
     (static-vectors:static-vector-pointer
-      (gbppu-framebuffer ppu)) (* 160 3))
-    (sdl2:render-copy renderer texture)
-    (sdl2:render-present renderer))
+      (gbppu-framebuffer ppu)) (* 160 3)))
