@@ -93,7 +93,7 @@
          (sprite-y-offset (- row sprite-y))
          (sprite-xflip (logand (ash sprite-flags -5) #x01))
          (palette-reg (if (= (logand sprite-flags #x10) #x00) #xff48 #xff49))
-         (color-addr (+ #x8000 (* tile-no (* sprite-height 2)) (* sprite-y-offset 2)))
+         (color-addr (+ #x8000 (* tile-no 16) (* sprite-y-offset 2)))
          (colorbyte1 (ppu-read-memory-at-addr ppu color-addr))
          (colorbyte2 (ppu-read-memory-at-addr ppu (+ color-addr 1))))
     (loop for i from 0 to 7
