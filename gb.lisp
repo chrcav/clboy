@@ -161,6 +161,10 @@
 ;; PPU
 
 (defun step-ppu (ppu gb renderer texture)
+  (when (and (not (gbppu-ppu-enabled? ppu))
+             (> (gbppu-cycles ppu) 0))
+    (setf (gbppu-cycles ppu) 0)
+    (ppu-mode-transition ppu gb 0))
   (when (gbppu-ppu-enabled? ppu)
     (incf (gbppu-cycles ppu) (gbcpu-clock (gb-cpu gb)))
     (maybe-do-dma ppu gb)
@@ -170,7 +174,7 @@
       (0 (when (> (gbppu-cycles ppu) (* 204 4))
            (incf (gbppu-cur-line ppu))
            (write-memory-at-addr gb #xff44 (gbppu-cur-line ppu))
-           (if (= (gbppu-cur-line ppu) 144)
+           (if (> (gbppu-cur-line ppu) 143)
              (progn (ppu-mode-transition ppu gb 1)
                     (update-screen ppu gb renderer texture))
              (ppu-mode-transition ppu gb 2))))
@@ -208,9 +212,7 @@
      (if (gbinput-a input) #x0 #x1)))
 
 (defun input-read-memory (input)
-  (let ((input-val (logand (gbinput-reg input) #x30))
-        (p14 (get-p14-byte input))
-        (p15 (get-p15-byte input)))
+  (let ((input-val (logand (gbinput-reg input) #x30)))
     (if (= input-val #x30) ; both p14 and p15 inactive
       (logior input-val #x0f)
     (if (= input-val #x20)
@@ -237,8 +239,7 @@
   (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-k)
     (setf (gbinput-b input) nil))
   (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-j)
-    (setf (gbinput-a input) nil))
-  )
+    (setf (gbinput-a input) nil)))
 
 (defun handle-keydown (gb input keysym)
   (setf (gb-stopped? gb) nil)
@@ -265,8 +266,7 @@
     (setf (gbinput-b input) t))
   (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-j)
     (set-interrupt-flag gb 4)
-    (setf (gbinput-a input) t))
-  )
+    (setf (gbinput-a input) t)))
 
 ;; CPU
 (defun step-cpu (cpu gb)

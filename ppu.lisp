@@ -26,8 +26,7 @@
         (gbppu-ppu-enabled? ppu) (> (logand val #x80) 0)
         (gbppu-window-enabled? ppu) (> (logand val #x20) 0)
         (gbppu-obj-enabled? ppu) (> (logand val #x02) 0)
-        (gbppu-bgwin-enabled? ppu) (> (logand val #x01) 0)
-        ))
+        (gbppu-bgwin-enabled? ppu) (> (logand val #x01) 0)))
 
 (defun ppu-write-memory-at-addr (ppu addr val)
   (case (logand addr #xf000)
