@@ -6,6 +6,7 @@
 (defstruct gb
   (cpu (make-gbcpu) :type gbcpu)
   (ppu (make-gbppu))
+  (spu (make-gbspu))
   (cart (make-gbcart))
   (input (make-gbinput))
   (stopped? nil :type boolean)
@@ -51,6 +52,7 @@
            (case
              (logand addr #x000f) (#x0 (setf (gbinput-reg (gb-input gb)) val))
              (otherwise (setf (aref (gb-zero-page gb) (logand addr #xff)) val))))
+          ((#x10 #x20 #x30) (spu-write-memory-at-addr (gb-spu gb) addr val))
           (#x40 (ppu-write-memory-at-addr (gb-ppu gb) addr val))
           (otherwise (setf (aref (gb-zero-page gb) (logand addr #xff)) val))))))))
 
@@ -80,6 +82,7 @@
              (case (logand addr #x000f)
                (#x0 (input-read-memory (gb-input gb)))
                (otherwise (aref (gb-zero-page gb) (logand addr #xff)))))
+            ((#x10 #x20 #x30) (spu-read-memory-at-addr (gb-spu gb) addr))
             (#x40 (ppu-read-memory-at-addr (gb-ppu gb) addr))
             (otherwise (aref (gb-zero-page gb) (logand addr #xff)))))))))
 

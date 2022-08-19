@@ -11,6 +11,7 @@
                         (:file "opcodes")
                         (:file "cpu")
                         (:file "ppu")
+                        (:file "spu")
                         (:file "cart")
                         (:file "gb")
                         ))
