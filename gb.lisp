@@ -175,7 +175,7 @@
     (check-ly-lyc ppu gb)
     (case (gbppu-mode ppu)
       ; in Hblank state
-      (0 (when (> (gbppu-cycles ppu) (* 204 4))
+      (0 (when (> (gbppu-cycles ppu) 204)
            (incf (gbppu-cur-line ppu))
            (write-memory-at-addr gb #xff44 (gbppu-cur-line ppu))
            (if (> (gbppu-cur-line ppu) 143)
@@ -183,7 +183,7 @@
                     (update-screen ppu gb texture))
              (ppu-mode-transition ppu gb 2))))
       ; in Vblank state
-      (1 (when (> (gbppu-cycles ppu) (* 456 4))
+      (1 (when (> (gbppu-cycles ppu) 456)
            (incf (gbppu-cur-line ppu))
            (write-memory-at-addr gb #xff44 (gbppu-cur-line ppu))
            (when (> (gbppu-cur-line ppu) 153)
@@ -191,10 +191,10 @@
              (write-memory-at-addr gb #xff44 0)
              (ppu-mode-transition ppu gb 2))))
       ; in OAM state
-      (2 (when (> (gbppu-cycles ppu) (* 80 4))
+      (2 (when (> (gbppu-cycles ppu) 80)
            (ppu-mode-transition ppu gb 3)))
       ; in VRAM Read state
-      (3 (when (> (gbppu-cycles ppu) (* 172 4))
+      (3 (when (> (gbppu-cycles ppu) 172)
            (render-scanline ppu)
            (ppu-mode-transition ppu gb 0)))))
   t)
@@ -327,7 +327,7 @@
                     (setf *out* (cons (code-char (read-memory-at-addr gb #xff01)) *out*))
                     (write-memory-at-addr gb #xff02 0)))
                 (step-ppu ppu gb texture)
-                ;(step-spu spu gb audio-device) ; need to improve emulation speed with audio
+                (step-spu spu gb audio-device)
                 (handle-timers cpu gb)
                 (handle-interrupts cpu gb)))
               (sdl2:render-copy renderer texture)
