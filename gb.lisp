@@ -164,40 +164,6 @@
 
 ;; PPU
 
-(defun step-ppu (ppu gb texture)
-  (when (and (not (gbppu-ppu-enabled? ppu))
-             (> (gbppu-cycles ppu) 0))
-    (setf (gbppu-cycles ppu) 0)
-    (ppu-mode-transition ppu gb 0))
-  (when (gbppu-ppu-enabled? ppu)
-    (incf (gbppu-cycles ppu) (gbcpu-clock (gb-cpu gb)))
-    (maybe-do-dma ppu gb)
-    (check-ly-lyc ppu gb)
-    (case (gbppu-mode ppu)
-      ; in Hblank state
-      (0 (when (> (gbppu-cycles ppu) 204)
-           (incf (gbppu-cur-line ppu))
-           (write-memory-at-addr gb #xff44 (gbppu-cur-line ppu))
-           (if (> (gbppu-cur-line ppu) 143)
-             (progn (ppu-mode-transition ppu gb 1)
-                    (update-screen ppu gb texture))
-             (ppu-mode-transition ppu gb 2))))
-      ; in Vblank state
-      (1 (when (> (gbppu-cycles ppu) 456)
-           (incf (gbppu-cur-line ppu))
-           (write-memory-at-addr gb #xff44 (gbppu-cur-line ppu))
-           (when (> (gbppu-cur-line ppu) 153)
-             (setf (gbppu-cur-line ppu) 0)
-             (write-memory-at-addr gb #xff44 0)
-             (ppu-mode-transition ppu gb 2))))
-      ; in OAM state
-      (2 (when (> (gbppu-cycles ppu) 80)
-           (ppu-mode-transition ppu gb 3)))
-      ; in VRAM Read state
-      (3 (when (> (gbppu-cycles ppu) 172)
-           (render-scanline ppu)
-           (ppu-mode-transition ppu gb 0)))))
-  t)
 
 ;; I/O
 
@@ -273,24 +239,8 @@
     (setf (gbinput-a input) t)))
 
 ;; CPU
-(defun step-cpu (cpu gb)
-  (let ((instr (emu-single-op cpu gb)))
-    (when (not instr) (sdl2:push-event :quit) nil)
-    (when (and *debug* (instruction-p instr))
-       (format t "~X: ~A --> PC=~X~%" (instruction-opcode instr) (instruction-asm instr) (gbcpu-pc cpu)))
-    ;(when (= (gbcpu-pc cpu) #xc33d) (sdl2:push-event :quit) nil)
-    ;(when (= (instruction-opcode instr) #x27) (sdl2:push-event :quit) nil)
-    (if (= (gbcpu-pc cpu) #x100) (setf (gb-is-bios? gb) nil))
-    t))
 
 ;; SPU
-(defun step-spu (spu gb audio-device)
-  (when (gbspu-ena? spu)
-    (incf (gbspu-cycles spu) (gbcpu-clock (gb-cpu gb)))
-    (when (> (gbspu-cycles spu) 100)
-      (run-sound spu audio-device)
-      (setf (gbspu-cycles spu) 0)
-      (loop while (> (sdl2:get-queued-audio-size audio-device) (* 4096 4))))))
 
 (defparameter *out* ())
 (defparameter *width* 160)
@@ -320,8 +270,7 @@
               (when (not (gb-stopped? gb))
                 (loop while (step-cpu cpu gb)
                       for cyc = 0 then (+ cyc (gbcpu-clock cpu))
-                      while (< cyc 5000)
-                      do
+                      while (< cyc 75000) do
                 (if (= (read-memory-at-addr gb #xff02) #x81)
                   (progn
                     (setf *out* (cons (code-char (read-memory-at-addr gb #xff01)) *out*))

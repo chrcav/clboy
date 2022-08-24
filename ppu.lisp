@@ -1,6 +1,11 @@
 
 (in-package :clboy)
 
+(defconstant +oam-duration-dots+ 80)
+(defconstant +vblank-duration-dots+ 4560)
+(defconstant +hblank-duration-dots+ 204)
+(defconstant +draw-duration-dots+ 172)
+
 (defstruct gbppu
   (framebuffer (static-vectors:make-static-vector (* 160 144 3)))
   (framebuffer-a (static-vectors:make-static-vector (* 160 144 4)))
@@ -159,21 +164,19 @@
          (tilemap-loc (if (= (logand lcdc #x08) #x08) #x9c00 #x9800))
          (tiledata-loc (if (= (logand lcdc #x10) #x10) #x8000 #x9000)))
     (when (< row 144)
-    (loop for col from 0 to 159
-      do
+    (loop for col from 0 to 159 do
       (let* ((yoffset (+ row scroll-y))
              (xoffset (+ col scroll-x))
              (addr (+ tilemap-loc (* (floor yoffset 8) 32) (floor xoffset 8)))
-            (tile-no (if (= tiledata-loc #x8000)
+             (tile-no (if (= tiledata-loc #x8000)
                        (ppu-read-memory-at-addr ppu addr)
                        (make-signed-from-unsigned (ppu-read-memory-at-addr ppu addr))))
-            (colorbitpos (- 7 (mod xoffset 8)))
-            (color-addr (+ tiledata-loc (* tile-no #x10) (* (mod yoffset 8) 2)))
-            (colorbyte1 (ppu-read-memory-at-addr ppu color-addr))
-            (colorbyte2 (ppu-read-memory-at-addr ppu (+ color-addr 1)))
-            (colorval (+
-                         (logand (ash colorbyte1 (- 0 colorbitpos)) #x01)
-                         (* (logand (ash colorbyte2 (- 0 colorbitpos)) #x01) 2))))
+             (colorbitpos (- 7 (mod xoffset 8)))
+             (color-addr (+ tiledata-loc (* tile-no #x10) (* (mod yoffset 8) 2)))
+             (colorbyte1 (ppu-read-memory-at-addr ppu color-addr))
+             (colorbyte2 (ppu-read-memory-at-addr ppu (+ color-addr 1)))
+             (colorval (+ (logand (ash colorbyte1 (- 0 colorbitpos)) #x01)
+                          (* (logand (ash colorbyte2 (- 0 colorbitpos)) #x01) 2))))
         (setf (aref (gbppu-bg-buffer ppu) (+ (* row 160) col)) colorval)
         (let ((palette-col (logand (ash (ppu-read-memory-at-addr ppu #xff47) (* colorval -2)) 3)))
         (setf (aref (gbppu-framebuffer ppu) (+ (* row 160 3) (* col 3))) (aref COLORS (* palette-col 3))
@@ -226,3 +229,38 @@
     (cffi:null-pointer)
     (static-vectors:static-vector-pointer
       (gbppu-framebuffer ppu)) (* 160 3)))
+
+(defun step-ppu (ppu gb texture)
+  (when (and (not (gbppu-ppu-enabled? ppu))
+             (> (gbppu-cycles ppu) 0))
+    (setf (gbppu-cycles ppu) 0)
+    (ppu-mode-transition ppu gb 0))
+  (when (gbppu-ppu-enabled? ppu)
+    (incf (gbppu-cycles ppu) (gbcpu-clock (gb-cpu gb)))
+    (maybe-do-dma ppu gb)
+    (check-ly-lyc ppu gb)
+    (case (gbppu-mode ppu)
+      ; in Hblank state
+      (0 (when (> (gbppu-cycles ppu) +hblank-duration-dots+)
+           (incf (gbppu-cur-line ppu))
+           (write-memory-at-addr gb #xff44 (gbppu-cur-line ppu))
+           (if (> (gbppu-cur-line ppu) 143)
+             (progn (ppu-mode-transition ppu gb 1)
+                    (update-screen ppu gb texture))
+             (ppu-mode-transition ppu gb 2))))
+      ; in Vblank state
+      (1 (when (> (gbppu-cycles ppu) +vblank-duration-dots+)
+           (incf (gbppu-cur-line ppu))
+           (write-memory-at-addr gb #xff44 (gbppu-cur-line ppu))
+           (when (> (gbppu-cur-line ppu) 153)
+             (setf (gbppu-cur-line ppu) 0)
+             (write-memory-at-addr gb #xff44 0)
+             (ppu-mode-transition ppu gb 2))))
+      ; in OAM state
+      (2 (when (> (gbppu-cycles ppu) +oam-duration-dots+)
+           (ppu-mode-transition ppu gb 3)))
+      ; in VRAM Read state
+      (3 (when (> (gbppu-cycles ppu) +draw-duration-dots+)
+           (render-scanline ppu)
+           (ppu-mode-transition ppu gb 0)))))
+  t)

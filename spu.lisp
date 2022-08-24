@@ -349,5 +349,12 @@
         (static-vectors:static-vector-pointer (gbspu-buffer spu))
         (* +audio-buffer-size+ 4))
       (setf (gbspu-buffer-index spu) 0)
-    )))
+      )));)
 
+(defun step-spu (spu gb audio-device)
+  (when (gbspu-ena? spu)
+    (incf (gbspu-cycles spu) (gbcpu-clock (gb-cpu gb)))
+      (run-sound spu audio-device)
+      (setf (gbspu-cycles spu) 0)
+      ;(loop while (> (sdl2:get-queued-audio-size audio-device) (* 4096 4)))
+    ))

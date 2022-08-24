@@ -316,3 +316,12 @@
   (write-memory-at-addr gb #xff0f (logand (read-memory-at-addr gb #xff0f) (logxor (ash #x01 interrupt-id) #xff)))
   (do-call-at-addr cpu gb (+ (* interrupt-id 8) #x40)))
 
+(defun step-cpu (cpu gb)
+  (let ((instr (emu-single-op cpu gb)))
+    (when (not instr) (sdl2:push-event :quit) nil)
+    (when (and *debug* (instruction-p instr))
+       (format t "~X: ~A --> PC=~X~%" (instruction-opcode instr) (instruction-asm instr) (gbcpu-pc cpu)))
+    ;(when (= (gbcpu-pc cpu) #xc33d) (sdl2:push-event :quit) nil)
+    ;(when (= (instruction-opcode instr) #x27) (sdl2:push-event :quit) nil)
+    (if (= (gbcpu-pc cpu) #x100) (setf (gb-is-bios? gb) nil))
+    t))
