@@ -125,12 +125,13 @@
     (setf (gbcpu-clock cpu) 0)))
 
 (defun incr-timer-by-cycles (cpu gb cycles-per-tick)
-  (let* ((cycles (gbcpu-clock cpu))
+  (let* ((cycles (+ (gbcpu-clock cpu) (gbcpu-clock-remainder cpu)))
          (ticks (floor cycles cycles-per-tick))
          (remainder (mod cycles cycles-per-tick))
          (cur-ticks (read-memory-at-addr gb #xff05))
          (new-ticks (+ cur-ticks ticks)))
-    (setf (gbcpu-clock cpu) remainder)
+    (setf (gbcpu-clock-remainder cpu) remainder
+          (gbcpu-clock cpu) 0)
     (if (> new-ticks #xff)
       (progn (set-interrupt-flag gb 2)
              (write-memory-at-addr gb #xff05 (+ (read-memory-at-addr gb #xff06) (logand new-ticks #xff))))
