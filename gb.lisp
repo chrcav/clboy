@@ -259,7 +259,7 @@
     (sdl2:with-window (win :title "CL-Boy" :flags '(:shown :opengl) :w (* *width* *scale*) :h (* *height* *scale*))
       (sdl2:with-renderer (renderer win)
         (let ((texture (sdl2:create-texture renderer :rgb24 :streaming 160 144))
-              (audio-device (sdl2::open-audio-device +sample-rate+ :f32 1 1024)))
+              (audio-device (sdl2::open-audio-device +sample-rate+ :f32 2 1024)))
           (format t "~A~%" audio-device)
           (sdl2::unpause-audio-device audio-device)
           (sdl2:with-event-loop (:method :poll)
