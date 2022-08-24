@@ -136,9 +136,8 @@
              (write-memory-at-addr gb #xff05 (+ (read-memory-at-addr gb #xff06) (logand new-ticks #xff))))
       (write-memory-at-addr gb #xff05 (logand new-ticks #xff)))))
 
-(defconstant CPU_SPEED 4194304)
 (defun get-cycles-per-timer-tick (freq)
-  (/ CPU_SPEED freq))
+  (/ +cpu-speed+ freq))
 
 (defun get-timer-frequency (tac)
   (let ((tac-two-lsb (logand tac #x3)))
@@ -148,6 +147,8 @@
           4096)))))
 
 ;; utils
+
+(defun bool-as-bit (bool) (if bool 1 0))
 
 (defun make-bios ()
   (make-array #x100 :initial-contents (read-rom-data-from-file "DMG_ROM.bin")))
@@ -282,6 +283,15 @@
     (if (= (gbcpu-pc cpu) #x100) (setf (gb-is-bios? gb) nil))
     t))
 
+;; SPU
+(defun step-spu (spu gb audio-device)
+  (when (gbspu-ena? spu)
+    (incf (gbspu-cycles spu) (gbcpu-clock (gb-cpu gb)))
+    (when (> (gbspu-cycles spu) 100)
+      (run-sound spu audio-device)
+      (setf (gbspu-cycles spu) 0)
+      (loop while (> (sdl2:get-queued-audio-size audio-device) (* 4096 4))))))
+
 (defparameter *out* ())
 (defparameter *width* 160)
 (defparameter *height* 144)
@@ -292,11 +302,15 @@
 (defun emu-main (gb)
   (let ((cpu (gb-cpu gb))
         (ppu (gb-ppu gb))
+        (spu (gb-spu gb))
         (input (gb-input gb)))
   (sdl2:with-init (:everything)
     (sdl2:with-window (win :title "CL-Boy" :flags '(:shown :opengl) :w (* *width* *scale*) :h (* *height* *scale*))
       (sdl2:with-renderer (renderer win)
-        (let ((texture (sdl2:create-texture renderer :rgb24 :streaming 160 144)))
+        (let ((texture (sdl2:create-texture renderer :rgb24 :streaming 160 144))
+              (audio-device (sdl2::open-audio-device +sample-rate+ :f32 1 1024)))
+          (format t "~A~%" audio-device)
+          (sdl2::unpause-audio-device audio-device)
           (sdl2:with-event-loop (:method :poll)
             (:keydown (:keysym keysym)
                       (handle-keydown gb input keysym))
@@ -313,6 +327,7 @@
                     (setf *out* (cons (code-char (read-memory-at-addr gb #xff01)) *out*))
                     (write-memory-at-addr gb #xff02 0)))
                 (step-ppu ppu gb texture)
+                ;(step-spu spu gb audio-device) ; need to improve emulation speed with audio
                 (handle-timers cpu gb)
                 (handle-interrupts cpu gb)))
               (sdl2:render-copy renderer texture)
