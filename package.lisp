@@ -10,7 +10,7 @@
   (cpu (make-gbcpu))
   (ppu (make-gbppu))
   (spu (make-gbspu))
-  (cart (make-gbcart))
+  (cart nil)
   (input (make-gbinput))
   (stopped? nil :type boolean)
   (paused? nil :type boolean)

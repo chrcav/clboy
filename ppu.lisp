@@ -21,6 +21,10 @@
   (oam (make-array #x100 :initial-element 0 :element-type '(unsigned-byte 8)))
   (vram (make-array #x2000 :initial-element 0 :element-type '(unsigned-byte 8)))
   (zero-page (make-array #x100 :initial-element 0 :element-type '(unsigned-byte 8)))
+  (scy 0)
+  (scx 0)
+  (wy 0)
+  (wx 0)
   (mode 0)
   (renderer nil)
   (texture nil)
@@ -33,6 +37,12 @@
                       192 192 192
                       96 96 96
                        0  0  0))
+
+(defun gbppu-reset (ppu)
+  (setf (gbppu-scy ppu) 0
+        (gbppu-scx ppu) 0
+        (gbppu-wy ppu) 0
+        (gbppu-wx ppu) 0))
 
 (defun write-new-lcdc-control (ppu val)
   (setf (aref (gbppu-zero-page ppu) #x40) val
@@ -51,6 +61,10 @@
        (#xf00
         (case (logand addr #x00ff)
           (#x40 (write-new-lcdc-control ppu val))
+          (#x42 (setf (gbppu-scy ppu) val))
+          (#x43 (setf (gbppu-scx ppu) val))
+          (#x4a (setf (gbppu-wy ppu) val))
+          (#x4b (setf (gbppu-wx ppu) val))
           (otherwise (setf (aref (gbppu-zero-page ppu) (logand addr #xff)) val))))))))
 
 (defun ppu-read-memory-at-addr (ppu addr)
@@ -61,7 +75,12 @@
      (case (logand addr #x0f00)
        (#xe00 (if (< addr #xfea0) (aref (gbppu-oam ppu) (logand addr #xff)) 0))
        (#xf00
-         (aref (gbppu-zero-page ppu) (logand addr #xff)))))))
+        (case (logand addr #x00ff)
+          (#x42 (gbppu-scy ppu))
+          (#x43 (gbppu-scx ppu))
+          (#x4a (gbppu-wy ppu))
+          (#x4b (gbppu-wx ppu))
+          (otherwise (aref (gbppu-zero-page ppu) (logand addr #xff)))))))))
 
 (defun read-sprite (ppu addr)
   (loop for a from addr to (+ addr 3)
