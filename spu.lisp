@@ -24,6 +24,7 @@
   (frame-sequencer 0)
   (delay 0)
   (cycles 0)
+  (device nil)
   )
 
 (defstruct channel
@@ -367,7 +368,7 @@
                (new-freq (funcall (if (= (logand (channel-r0 channel) #x8) #x8) #'- #'+) cur-freq (ash cur-freq (- 0 channel-sweep)))))
                (if (< new-freq 2048) (set-channel-freq channel new-freq))))))
 
-(defun run-sound (spu audio-device)
+(defun run-sound (spu)
   ;(format t "~X~%" (read-sound-ena spu))
   ;(when (> (logand (read-sound-ena spu) #xf) 0)
   (loop
@@ -394,18 +395,18 @@
             (* (+ (gbspu-right-vol spu) 1) (cadr output) +audio-normalize-factor+))
       (incf (gbspu-buffer-index spu) 2)))
     (when (>= (gbspu-buffer-index spu) +audio-buffer-size+)
-      ;(sdl2:queue-audio audio-device (gbspu-buffer spu))
+      ;(sdl2:queue-audio (gbspu-device spu) (gbspu-buffer spu))
       (sdl2-ffi.functions:sdl-queue-audio
-        audio-device
+        (gbspu-device spu)
         (static-vectors:static-vector-pointer (gbspu-buffer spu))
         (* +audio-buffer-size+ 4))
       (setf (gbspu-buffer-index spu) 0)
       )));)
 
-(defun step-spu (spu gb audio-device)
+(defun step-spu (spu gb)
   (when (gbspu-ena? spu)
     (incf (gbspu-cycles spu) (gbcpu-clock (gb-cpu gb)))
-      (run-sound spu audio-device)
+      (run-sound spu)
       (setf (gbspu-cycles spu) 0)
-      ;(loop while (> (sdl2:get-queued-audio-size audio-device) (* 4096 4)))
+      (loop while (> (sdl2:get-queued-audio-size (gbspu-device spu)) (* 4096 4)))
     ))

@@ -3,18 +3,6 @@
 
 (in-package :clboy)
 
-(defstruct gb
-  (cpu (make-gbcpu) :type gbcpu)
-  (ppu (make-gbppu))
-  (spu (make-gbspu))
-  (cart (make-gbcart))
-  (input (make-gbinput))
-  (stopped? nil :type boolean)
-  (bios (make-bios))
-  (is-bios? t :type boolean)
-  (int-ram (make-array #x2000 :initial-element 0 :element-type '(unsigned-byte 8)))
-  (zero-page (make-array #x100 :initial-element 0 :element-type '(unsigned-byte 8))))
-
 
 (defstruct gbinput
   (down   nil :type boolean)
@@ -192,9 +180,15 @@
       (+ input-val (get-p15-byte input))
       #x0f)))))
 
-(defun handle-keyup (input keysym)
+(defun handle-keyup (input gb keysym)
   (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-escape)
     (sdl2:push-event :quit))
+  (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-p)
+    (setf (gb-paused? gb) (not (gb-paused? gb))))
+  (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-r)
+    (gb-reset gb))
+  (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-b)
+    (render-full-background (gb-ppu gb) gb))
   (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-w)
     (setf (gbinput-up input) nil))
   (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-a)
@@ -244,8 +238,8 @@
 ;; SPU
 
 (defparameter *out* ())
-(defparameter *width* 160)
-(defparameter *height* 144)
+(defparameter *width* 256)
+(defparameter *height* 256)
 (defparameter *scale* 3)
 
 (defparameter *debug* nil)
@@ -258,42 +252,52 @@
   (sdl2:with-init (:everything)
     (sdl2:with-window (win :title "CL-Boy" :flags '(:shown :opengl) :w (* *width* *scale*) :h (* *height* *scale*))
       (sdl2:with-renderer (renderer win)
-        (let ((texture (sdl2:create-texture renderer :rgb24 :streaming 160 144))
+        (let ((texture
+                (sdl2:create-texture renderer :rgb24 :streaming +screen-pixel-width+ +screen-pixel-height+))
+              (rect (sdl2:make-rect
+                      (* (/ (- *width* +screen-pixel-width+) 2) *scale*)
+                      (* (/ (- *height* +screen-pixel-height+) 2) *scale*)
+                      (* +screen-pixel-width+ *scale*) (* +screen-pixel-height+ *scale*)))
               (audio-device (sdl2::open-audio-device +sample-rate+ :f32 2 1024)))
           (format t "~A~%" audio-device)
           (sdl2::unpause-audio-device audio-device)
+          (setf (gbppu-renderer (gb-ppu gb)) renderer)
+          (setf (gbppu-texture (gb-ppu gb)) texture)
+          (setf (gbspu-device (gb-spu gb)) audio-device)
           (sdl2:with-event-loop (:method :poll)
             (:keydown (:keysym keysym)
                       (handle-keydown gb input keysym))
             (:keyup (:keysym keysym)
-                    (handle-keyup input keysym))
+                    (handle-keyup input gb keysym))
             (:idle ()
-              (when (not (gb-stopped? gb))
-                (loop while (step-cpu cpu gb)
-                      for cyc = 0 then (+ cyc (gbcpu-clock cpu))
-                      while (< cyc 75000) do
-                (if (= (read-memory-at-addr gb #xff02) #x81)
-                  (progn
-                    (setf *out* (cons (code-char (read-memory-at-addr gb #xff01)) *out*))
-                    (write-memory-at-addr gb #xff02 0)))
-                (step-ppu ppu gb texture)
-                (step-spu spu gb audio-device)
-                (handle-timers cpu gb)
-                (handle-interrupts cpu gb)))
-              (sdl2:render-copy renderer texture)
+              (when (not (gb-paused? gb))
+                (when (not (gb-stopped? gb))
+                  (loop while (step-cpu cpu gb)
+                        for cyc = 0 then (+ cyc (gbcpu-clock cpu))
+                        while (< cyc 75000) do
+                  (if (= (read-memory-at-addr gb #xff02) #x81)
+                    (progn
+                      (setf *out* (cons (code-char (read-memory-at-addr gb #xff01)) *out*))
+                      (write-memory-at-addr gb #xff02 0)))
+                  (step-ppu ppu gb)
+                  (step-spu spu gb)
+                  (handle-timers cpu gb)
+                  (handle-interrupts cpu gb)))
+                (sdl2:render-clear renderer)
+                (sdl2:render-copy renderer texture :dest-rect rect))
               (sdl2:render-present renderer))
             (:quit () t))))))))
 
 
 (defparameter *gb* (make-gb))
 
-(defun gb-reset ()
-  (setf *gb* (make-gb))
-  (replace-memory-with-rom (gb-cart *gb*) loaded-rom)
-  (get-carttype-from-rom (gb-cart *gb*))
-  (get-rommask-from-rom (gb-cart *gb*))
-  (get-ramsize-from-rom (gb-cart *gb*))
-  (write-memory-at-addr *gb* #xff00 #xff))
+(defun gb-reset (gb)
+  (setf gb (make-gb))
+  (replace-memory-with-rom (gb-cart gb) loaded-rom)
+  (get-carttype-from-rom (gb-cart gb))
+  (get-rommask-from-rom (gb-cart gb))
+  (get-ramsize-from-rom (gb-cart gb))
+  (write-memory-at-addr gb #xff00 #xff))
 
 (defun dump-mem-region (start end)
   (loop for a from start to end
