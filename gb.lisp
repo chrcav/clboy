@@ -22,7 +22,7 @@
   (case (logand addr #xf000)
     ((#x0000 #x1000 #x2000 #x3000 #x4000
       #x5000 #x6000 #x7000 #xa000 #xb000)
-     (cart-write-memory-at-addr (gb-cart gb) addr val))
+     (if (gbcart-p (gb-cart gb)) (cart-write-memory-at-addr (gb-cart gb) addr val)))
     ((#x8000 #x9000)
      (ppu-write-memory-at-addr (gb-ppu gb) addr val))
     ((#xc000 #xd000 #xe000)
@@ -37,8 +37,8 @@
        (#xf00
         (case (logand addr #x00f0)
           (#x00
-           (case
-             (logand addr #x000f) (#x0 (setf (gbinput-reg (gb-input gb)) val))
+           (case (logand addr #x000f)
+             (#x0 (setf (gbinput-reg (gb-input gb)) val))
              (otherwise (setf (aref (gb-zero-page gb) (logand addr #xff)) val))))
           ((#x10 #x20 #x30) (spu-write-memory-at-addr (gb-spu gb) addr val))
           (#x40 (ppu-write-memory-at-addr (gb-ppu gb) addr val))
