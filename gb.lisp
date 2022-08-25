@@ -81,23 +81,21 @@
 
 ;; INTERRUPTS
 (defun handle-interrupts (cpu gb)
-  (setf (gbcpu-halted cpu) #x00)
-  (if (= (gbcpu-int-ena cpu) #x01)
-      ; VBLANK interupt
-      (if (= (logand (logand (read-memory-at-addr gb #xffff) #x01) (logand (read-memory-at-addr gb #xff0f) #x01)) #x01)
-        (do-interrupt cpu gb 0)
-      ; LCDC Status interupt
-      (if (= (logand (logand (read-memory-at-addr gb #xffff) #x02) (logand (read-memory-at-addr gb #xff0f) #x02)) #x02)
-        (do-interrupt cpu gb 1)
-      ; Timer interupt
-      (if (= (logand (logand (read-memory-at-addr gb #xffff) #x04) (logand (read-memory-at-addr gb #xff0f) #x04)) #x04)
-        (do-interrupt cpu gb 2)
-      ; Serial Transfer interupt
-      (if (= (logand (logand (read-memory-at-addr gb #xffff) #x08) (logand (read-memory-at-addr gb #xff0f) #x08)) #x08)
-        (do-interrupt cpu gb 3)
-      ; Hi-Lo of P10-P13 interupt
-      (if (= (logand (logand (read-memory-at-addr gb #xffff) #x10) (logand (read-memory-at-addr gb #xff0f) #x10)) #x10)
-        (do-interrupt cpu gb 4))))))))
+  ; VBLANK interupt
+  (if (= (logand (logand (read-memory-at-addr gb #xffff) #x01) (logand (read-memory-at-addr gb #xff0f) #x01)) #x01)
+    (do-interrupt cpu gb 0)
+  ; LCDC Status interupt
+  (if (= (logand (logand (read-memory-at-addr gb #xffff) #x02) (logand (read-memory-at-addr gb #xff0f) #x02)) #x02)
+    (do-interrupt cpu gb 1)
+  ; Timer interupt
+  (if (= (logand (logand (read-memory-at-addr gb #xffff) #x04) (logand (read-memory-at-addr gb #xff0f) #x04)) #x04)
+    (do-interrupt cpu gb 2)
+  ; Serial Transfer interupt
+  (if (= (logand (logand (read-memory-at-addr gb #xffff) #x08) (logand (read-memory-at-addr gb #xff0f) #x08)) #x08)
+    (do-interrupt cpu gb 3)
+  ; Hi-Lo of P10-P13 interupt
+  (if (= (logand (logand (read-memory-at-addr gb #xffff) #x10) (logand (read-memory-at-addr gb #xff0f) #x10)) #x10)
+    (do-interrupt cpu gb 4)))))))
 
 (defun set-interrupt-flag (gb bit-pos)
   (write-memory-at-addr gb #xff0f (logior (read-memory-at-addr gb #xff0f) (ash #x01 bit-pos))))

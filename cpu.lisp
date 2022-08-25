@@ -313,9 +313,11 @@
            (incf (gbcpu-div-clock cpu)))))
 
 (defun do-interrupt (cpu gb interrupt-id)
-  (setf (gbcpu-int-ena cpu) #x00)
-  (write-memory-at-addr gb #xff0f (logand (read-memory-at-addr gb #xff0f) (logxor (ash #x01 interrupt-id) #xff)))
-  (do-call-at-addr cpu gb (+ (* interrupt-id 8) #x40)))
+  (setf (gbcpu-halted cpu) #x00)
+  (when (= (gbcpu-int-ena cpu) #x01)
+    (setf (gbcpu-int-ena cpu) #x00)
+    (write-memory-at-addr gb #xff0f (logand (read-memory-at-addr gb #xff0f) (logxor (ash #x01 interrupt-id) #xff)))
+    (do-call-at-addr cpu gb (+ (* interrupt-id 8) #x40))))
 
 (defun step-cpu (cpu gb)
   (let ((instr (emu-single-op cpu gb)))
