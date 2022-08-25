@@ -143,8 +143,9 @@
                        (logand (ash colorbyte1 colorbitpos) #x01)
                        (* (logand (ash colorbyte2 colorbitpos) #x01) 2))))
       (when (or is-background?
-                (= (aref (gbppu-bg-buffer ppu) (+ (* row +screen-pixel-width+) col)) #x00)
-                (and (= priority #x00) (> colorval #x00)))
+                (and (> colorval #x00)
+                     (or (= (aref (gbppu-bg-buffer ppu) (+ (* row +screen-pixel-width+) col)) #x00)
+                         (= priority #x00) )))
         (setf (aref (gbppu-bg-buffer ppu) (+ (* row framebuffer-width) col)) colorval)
         (let ((palette-col (logand (ash (ppu-read-memory-at-addr ppu palette-reg) (* colorval -2)) 3)))
           (setf (aref framebuffer (+ (* row framebuffer-width 3) (* col 3)))
