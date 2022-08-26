@@ -48,6 +48,13 @@
   (dac-ena? t :type boolean)
   )
 
+(defun gbspu-reset (spu)
+  (setf (gbspu-ena? spu) nil
+        (channel-ena? (gbspu-ch1 spu)) nil
+        (channel-ena? (gbspu-ch2 spu)) nil
+        (channel-ena? (gbspu-ch3 spu)) nil
+        (channel-ena? (gbspu-ch4 spu)) nil))
+
 (defun spu-read-memory-at-addr (spu addr)
   (case (logand addr #xff)
     ((#x10 #x11 #x12 #x13 #x14      #x16 #x17

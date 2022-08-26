@@ -42,7 +42,10 @@
   (setf (gbppu-scy ppu) 0
         (gbppu-scx ppu) 0
         (gbppu-wy ppu) 0
-        (gbppu-wx ppu) 0))
+        (gbppu-wx ppu) 0
+        (gbppu-wx ppu) 0
+        (gbppu-window-enabled? ppu) nil
+        (gbppu-obj-enabled? ppu) nil))
 
 (defun write-new-lcdc-control (ppu val)
   (setf (aref (gbppu-zero-page ppu) #x40) val

@@ -290,6 +290,7 @@
 
 (defun gb-reset (gb)
   (gbppu-reset (gb-ppu gb))
+  (gbspu-reset (gb-spu gb))
   (setf (gb-cpu gb) (make-gbcpu)
   ; doing this to reset scroll values. but might not be necessary.
         (gb-is-bios? gb) t
