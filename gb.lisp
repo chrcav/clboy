@@ -42,6 +42,7 @@
              (otherwise (setf (aref (gb-zero-page gb) (logand addr #xff)) val))))
           ((#x10 #x20 #x30) (spu-write-memory-at-addr (gb-spu gb) addr val))
           (#x40 (ppu-write-memory-at-addr (gb-ppu gb) addr val))
+          (#x50 (if (= (logand addr #xff) #x50) (setf (gb-is-bios? gb) (= val 0))))
           (otherwise (setf (aref (gb-zero-page gb) (logand addr #xff)) val))))))))
 
 (defun read-memory-at-addr (gb addr)
@@ -70,6 +71,7 @@
                (otherwise (aref (gb-zero-page gb) (logand addr #xff)))))
             ((#x10 #x20 #x30) (spu-read-memory-at-addr (gb-spu gb) addr))
             (#x40 (ppu-read-memory-at-addr (gb-ppu gb) addr))
+            (#x50 (if (= (logand addr #xff) #x50) (if (gb-is-bios? gb) #xff #x00)))
             (otherwise (aref (gb-zero-page gb) (logand addr #xff)))))))))
 
 (defun get-address-from-memory (gb pc)

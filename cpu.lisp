@@ -326,5 +326,4 @@
        (format t "~X: ~A --> PC=~X~%" (instruction-opcode instr) (instruction-asm instr) (gbcpu-pc cpu)))
     ;(when (= (gbcpu-pc cpu) #xc33d) (sdl2:push-event :quit) nil)
     ;(when (= (instruction-opcode instr) #x27) (sdl2:push-event :quit) nil)
-    (if (= (gbcpu-pc cpu) #x100) (setf (gb-is-bios? gb) nil))
     t))
