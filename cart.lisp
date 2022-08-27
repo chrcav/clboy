@@ -161,6 +161,6 @@
      (when (gbcart-ramon cart)
        (when (>= (gbcart-rambank cart) 0)
          (setf (aref (gbcart-ram cart) (+ (* (gbcart-rambank cart) #x2000) (logand addr #x1fff))) val))
-       (when (>= (gbcart-timerbank cart) 0)
+       (when (>= (gbcart-timerbank cart) 0) ; TODO need to understand how the timers function
          (setf (aref (gbcart-timers cart) (logand (gbcart-timerbank cart) #x7)) val))))))
 
