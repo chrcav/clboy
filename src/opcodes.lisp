@@ -282,7 +282,7 @@
 (setf (aref ops #x2a) (make-instruction
                         :opcode #x2a :bytes 1 :cycles '(2 0) :asm '(:ld "A,(HL+)")
                         :fun (lambda (cpu gb instr)
-                               (setf (gbcpu-a cpu) (get-byte-from-hl-address cpu gb))
+                               (setf (gbcpu-a cpu) (get-byte-at-hl cpu gb))
                                (set-reg-pair-hl-to-val cpu (incr-reg-pair (gbcpu-h cpu) (gbcpu-l cpu)))
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #x2b) (make-instruction
@@ -349,7 +349,7 @@
                                (write-memory-at-addr
                                  gb
                                  (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))
-                                 (incr-reg cpu (get-byte-from-hl-address cpu gb)))
+                                 (incr-reg cpu (get-byte-at-hl cpu gb)))
                                (incr-cpu-counters cpu instr))))
 
 (setf (aref ops #x35) (make-instruction
@@ -358,7 +358,7 @@
                                (write-memory-at-addr
                                  gb
                                  (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))
-                                 (decr-reg cpu (get-byte-from-hl-address cpu gb)))
+                                 (decr-reg cpu (get-byte-at-hl cpu gb)))
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #x36) (make-instruction
                         :opcode #x36 :bytes 2 :cycles '(3 0) :asm '(:ld "(HL),u8")
@@ -395,7 +395,7 @@
 (setf (aref ops #x3a) (make-instruction
                         :opcode #x3a :bytes 1 :cycles '(2 0) :asm '(:ld "A,(HL-)")
                         :fun (lambda (cpu gb instr)
-                               (setf (gbcpu-a cpu) (get-byte-from-hl-address cpu gb))
+                               (setf (gbcpu-a cpu) (get-byte-at-hl cpu gb))
                                (set-reg-pair-hl-to-val cpu (decr-reg-pair (gbcpu-h cpu) (gbcpu-l cpu)))
                                (incr-cpu-counters cpu instr))))
 
@@ -465,7 +465,7 @@
 (setf (aref ops #x46) (make-instruction
                         :opcode #x46 :bytes 1 :cycles '(2 0) :asm '(:ld "B,(HL)")
                         :fun (lambda (cpu gb instr)
-                               (setf (gbcpu-b cpu) (get-byte-from-hl-address cpu gb))
+                               (setf (gbcpu-b cpu) (get-byte-at-hl cpu gb))
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #x47) (make-instruction
                         :opcode #x47 :bytes 1 :cycles '(1 0) :asm '(:ld "B,A")
@@ -507,7 +507,7 @@
 (setf (aref ops #x4e) (make-instruction
                         :opcode #x4e :bytes 1 :cycles '(2 0) :asm '(:ld "C,(HL)")
                         :fun (lambda (cpu gb instr)
-                               (setf (gbcpu-c cpu) (get-byte-from-hl-address cpu gb))
+                               (setf (gbcpu-c cpu) (get-byte-at-hl cpu gb))
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #x4f) (make-instruction
                         :opcode #x4f :bytes 1 :cycles '(1 0) :asm '(:ld "C,A")
@@ -549,7 +549,7 @@
 (setf (aref ops #x56) (make-instruction
                         :opcode #x56 :bytes 1 :cycles '(2 0) :asm '(:ld "D,(HL)")
                         :fun (lambda (cpu gb instr)
-                               (setf (gbcpu-d cpu) (get-byte-from-hl-address cpu gb))
+                               (setf (gbcpu-d cpu) (get-byte-at-hl cpu gb))
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #x57) (make-instruction
                         :opcode #x57 :bytes 1 :cycles '(1 0) :asm '(:ld "D,A")
@@ -591,7 +591,7 @@
 (setf (aref ops #x5e) (make-instruction
                         :opcode #x5e :bytes 1 :cycles '(2 0) :asm '(:ld "E,(HL)")
                         :fun (lambda (cpu gb instr)
-                               (setf (gbcpu-e cpu) (get-byte-from-hl-address cpu gb))
+                               (setf (gbcpu-e cpu) (get-byte-at-hl cpu gb))
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #x5f) (make-instruction
                         :opcode #x5f :bytes 1 :cycles '(1 0) :asm '(:ld "E,A")
@@ -633,7 +633,7 @@
 (setf (aref ops #x66) (make-instruction
                         :opcode #x66 :bytes 1 :cycles '(2 0) :asm '(:ld "H,(HL)")
                         :fun (lambda (cpu gb instr)
-                               (setf (gbcpu-h cpu) (get-byte-from-hl-address cpu gb))
+                               (setf (gbcpu-h cpu) (get-byte-at-hl cpu gb))
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #x67) (make-instruction
                         :opcode #x67 :bytes 1 :cycles '(1 0) :asm '(:ld "H,A")
@@ -675,7 +675,7 @@
 (setf (aref ops #x6e) (make-instruction
                         :opcode #x6e :bytes 1 :cycles '(2 0) :asm '(:ld "L,(HL)")
                         :fun (lambda (cpu gb instr)
-                               (setf (gbcpu-l cpu) (get-byte-from-hl-address cpu gb))
+                               (setf (gbcpu-l cpu) (get-byte-at-hl cpu gb))
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #x6f) (make-instruction
                         :opcode #x6f :bytes 1 :cycles '(1 0) :asm '(:ld "L,A")
@@ -770,7 +770,7 @@
 (setf (aref ops #x7e) (make-instruction
                         :opcode #x7e :bytes 1 :cycles '(2 0) :asm '(:ld "A,(HL)")
                         :fun (lambda (cpu gb instr)
-                               (setf (gbcpu-a cpu) (get-byte-from-hl-address cpu gb))
+                               (setf (gbcpu-a cpu) (get-byte-at-hl cpu gb))
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #x7f) (make-instruction
                         :opcode #x7f :bytes 1 :cycles '(1 0) :asm '(:ld "A,A")
@@ -819,7 +819,7 @@
 (setf (aref ops #x86) (make-instruction
                         :opcode #x86 :bytes 1 :cycles '(2 0) :asm '(:add "A,(HL)")
                         :fun (lambda (cpu gb instr)
-                               (setf (gbcpu-a cpu) (add cpu (gbcpu-a cpu) (get-byte-from-hl-address cpu gb)))
+                               (setf (gbcpu-a cpu) (add cpu (gbcpu-a cpu) (get-byte-at-hl cpu gb)))
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #x87) (make-instruction
                         :opcode #x87 :bytes 1 :cycles '(1 0) :asm '(:add "A,A")
@@ -868,7 +868,7 @@
 (setf (aref ops #x8e) (make-instruction
                         :opcode #x8e :bytes 1 :cycles '(2 0) :asm '(:adc "A,(HL)")
                         :fun (lambda (cpu gb instr)
-                               (setf (gbcpu-a cpu) (adc cpu (gbcpu-a cpu) (get-byte-from-hl-address cpu gb)))
+                               (setf (gbcpu-a cpu) (adc cpu (gbcpu-a cpu) (get-byte-at-hl cpu gb)))
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #x8f) (make-instruction
                         :opcode #x8f :bytes 1 :cycles '(1 0) :asm '(:adc "A,A")
@@ -917,7 +917,7 @@
 (setf (aref ops #x96) (make-instruction
                         :opcode #x96 :bytes 1 :cycles '(2 0) :asm '(:sub "A,(HL)")
                         :fun (lambda (cpu gb instr)
-                               (setf (gbcpu-a cpu) (sub cpu (gbcpu-a cpu) (get-byte-from-hl-address cpu gb)))
+                               (setf (gbcpu-a cpu) (sub cpu (gbcpu-a cpu) (get-byte-at-hl cpu gb)))
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #x97) (make-instruction
                         :opcode #x97 :bytes 1 :cycles '(1 0) :asm '(:sub "A,A")
@@ -966,7 +966,7 @@
 (setf (aref ops #x9e) (make-instruction
                         :opcode #x9e :bytes 1 :cycles '(2 0) :asm '(:sbc "A,(HL)")
                         :fun (lambda (cpu gb instr)
-                               (setf (gbcpu-a cpu) (sbc cpu (gbcpu-a cpu) (get-byte-from-hl-address cpu gb)))
+                               (setf (gbcpu-a cpu) (sbc cpu (gbcpu-a cpu) (get-byte-at-hl cpu gb)))
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #x9f) (make-instruction
                         :opcode #x9f :bytes 1 :cycles '(1 0) :asm '(:sbc "A,A")
@@ -1015,7 +1015,7 @@
 (setf (aref ops #xa6) (make-instruction
                         :opcode #xa6 :bytes 1 :cycles '(2 0) :asm '(:and "A,(HL)")
                         :fun (lambda (cpu gb instr)
-                               (let ((res (and-op cpu (gbcpu-a cpu) (get-byte-from-hl-address cpu gb))))
+                               (let ((res (and-op cpu (gbcpu-a cpu) (get-byte-at-hl cpu gb))))
                                  (setf (gbcpu-a cpu) res)
                                  (incr-cpu-counters cpu instr)))))
 (setf (aref ops #xa7) (make-instruction
@@ -1065,7 +1065,7 @@
 (setf (aref ops #xae) (make-instruction
                         :opcode #xae :bytes 1 :cycles '(2 0) :asm '(:xor "A,(HL)")
                         :fun (lambda (cpu gb instr)
-                               (let ((res (xor cpu (gbcpu-a cpu) (get-byte-from-hl-address cpu gb))))
+                               (let ((res (xor cpu (gbcpu-a cpu) (get-byte-at-hl cpu gb))))
                                  (setf (gbcpu-a cpu) res)
                                  (incr-cpu-counters cpu instr)))))
 (setf (aref ops #xaf) (make-instruction
@@ -1116,7 +1116,7 @@
 (setf (aref ops #xb6) (make-instruction
                         :opcode #xb6 :bytes 1 :cycles '(2 0) :asm '(:or "A,(HL)")
                         :fun (lambda (cpu gb instr)
-                               (setf (gbcpu-a cpu) (or-op cpu (gbcpu-a cpu) (get-byte-from-hl-address cpu gb)))
+                               (setf (gbcpu-a cpu) (or-op cpu (gbcpu-a cpu) (get-byte-at-hl cpu gb)))
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #xb7) (make-instruction
                         :opcode #xb7 :bytes 1 :cycles '(1 0) :asm '(:or "A,A")
@@ -1159,7 +1159,7 @@
 (setf (aref ops #xbe) (make-instruction
                         :opcode #xbe :bytes 1 :cycles '(2 0) :asm '(:cp "A,(HL)")
                         :fun (lambda (cpu gb instr)
-                               (cp-reg-with-val cpu (gbcpu-a cpu) (get-byte-from-hl-address cpu gb))
+                               (cp-reg-with-val cpu (gbcpu-a cpu) (get-byte-at-hl cpu gb))
                                (incr-cpu-counters cpu instr))))
 (setf (aref ops #xbf) (make-instruction
                         :opcode #xbf :bytes 1 :cycles '(1 0) :asm '(:cp "A,A")

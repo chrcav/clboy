@@ -32,9 +32,12 @@
   (logior lsb (ash msb 8)))
 
 
-(defun get-byte-from-hl-address (cpu gb)
+(defun get-byte-at-hl (cpu gb)
   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
     (read-memory-at-addr gb addr)))
+(defun set-byte-at-hl (cpu gb val)
+  (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
+    (write-memory-at-addr gb addr val)))
 
 (defun set-reg-pair-bc-to-val (cpu val)
   (setf (gbcpu-b cpu) (logand (ash val -8) #xff)
