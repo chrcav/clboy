@@ -27,4 +27,5 @@
            :components ((:module "test"
                          :serial t
                          :components
-                         ((:file "cpu")))))
+                         ((:file "cpu")
+                          (:file "tests")))))
