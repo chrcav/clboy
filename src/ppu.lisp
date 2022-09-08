@@ -33,10 +33,10 @@
   (obj-enabled? nil :type boolean)
   (bgwin-enabled? t :type boolean))
 
-(defconstant COLORS #(255 255 255
-                      192 192 192
-                      96 96 96
-                       0  0  0))
+(defconstant +colors+ #((255 255 255)
+                       (192 192 192)
+                       (96 96 96)
+                       (0  0  0)))
 
 (defun gbppu-reset (ppu)
   (setf (gbppu-scy ppu) 0
@@ -135,8 +135,8 @@
     (render-tile-line ppu (gbppu-framebuffer ppu) row color-addr :start-x sprite-x :xflip? sprite-xflip? :priority (ash sprite-flags -7) :palette-reg palette-reg)))
 
 (defun render-tile-line (ppu framebuffer row tile-row-addr &key (start-x 0) (xflip? nil) (is-background? nil) (priority 0) (palette-reg #xff47) (framebuffer-width +screen-pixel-width+))
-  (let* ((colorbyte1 (ppu-read-memory-at-addr ppu tile-row-addr))
-         (colorbyte2 (ppu-read-memory-at-addr ppu (+ tile-row-addr 1))))
+  (let ((colorbyte1 (ppu-read-memory-at-addr ppu tile-row-addr))
+        (colorbyte2 (ppu-read-memory-at-addr ppu (+ tile-row-addr 1))))
   (loop for i from 0 to 7
         for col = (+ start-x i)
         when (and (>= col 0) (< col framebuffer-width))
@@ -151,14 +151,9 @@
                          (= priority #x00) )))
         (setf (aref (gbppu-bg-buffer ppu) (+ (* row framebuffer-width) col)) colorval)
         (let ((palette-col (logand (ash (ppu-read-memory-at-addr ppu palette-reg) (* colorval -2)) 3)))
-          (setf (aref framebuffer (+ (* row framebuffer-width 3) (* col 3)))
-                (aref COLORS (* palette-col 3))
-                (aref framebuffer (+ (* row framebuffer-width 3) (* col 3) 1))
-                (aref COLORS (+ (* palette-col 3) 1))
-                (aref framebuffer (+ (* row framebuffer-width 3) (* col 3) 2))
-                (aref COLORS (+ (* palette-col 3) 2))
-                ;(aref (gbppu-framebuffer-a ppu) (+ (* row framebuffer-width 4) (* col 4) 3)) #xff
-                )))))))
+          (replace framebuffer (aref +colors+ palette-col)
+                   :start1 (+ (* row framebuffer-width 3) (* col 3)))
+                ))))))
 
 (defun add-window-to-ppu-framebuffer (ppu)
   (let* ((row (gbppu-cur-line ppu))

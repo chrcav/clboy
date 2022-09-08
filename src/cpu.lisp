@@ -66,11 +66,9 @@
     res))
 
 (defun incr-reg-pair (msb lsb)
-  (let ((res (+ (logior lsb (ash msb 8)) 1)))
-    res))
+  (+ (logior lsb (ash msb 8)) 1))
 (defun decr-reg-pair (msb lsb)
-  (let ((res (- (logior lsb (ash msb 8)) 1)))
-    res))
+  (- (logior lsb (ash msb 8)) 1))
 
 (defun incr-cpu-counters (cpu instr)
   (incf (gbcpu-pc cpu) (instruction-bytes instr))
@@ -83,8 +81,7 @@
   (incf (gbcpu-div-clock cpu) (cadr (instruction-cycles instr))))
 
 (defun get-new-addr-from-relative (addr b)
-  (let* ((rel (make-signed-from-unsigned b))
-        (res (+ addr rel)))
+  (let ((res (+ addr (make-signed-from-unsigned b))))
     (if (< res 0) (+ #x10000 res) res)))
 
 (defun add-signed-byte-to-sp (cpu b)

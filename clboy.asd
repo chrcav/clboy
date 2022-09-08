@@ -10,6 +10,7 @@
                          :serial t
                          :components
                            ((:file "package")
+                           (:file "utils")
                            (:file "opcodes")
                            (:file "cpu")
                            (:file "ppu")
