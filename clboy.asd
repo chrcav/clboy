@@ -11,8 +11,8 @@
                          :components
                            ((:file "package")
                            (:file "utils")
-                           (:file "opcodes")
                            (:file "cpu")
+                           (:file "opcodes")
                            (:file "ppu")
                            (:file "spu")
                            (:file "cart")

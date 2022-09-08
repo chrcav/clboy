@@ -208,6 +208,11 @@
          (msb (read-memory-at-addr gb (+ sp 1))))
     (incf (gbcpu-sp cpu) 2)
     (logior lsb (ash msb 8))))
+(defun peek-addr-from-stack (cpu gb)
+  (let* ((sp (gbcpu-sp cpu))
+         (lsb (read-memory-at-addr gb sp))
+         (msb (read-memory-at-addr gb (+ sp 1))))
+    (logior lsb (ash msb 8))))
 
 (defun push-reg-pair-on-stack (cpu gb reg1 reg2)
   (let ((sp (gbcpu-sp cpu)))
