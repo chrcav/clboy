@@ -130,7 +130,7 @@
   (make-instruction
      :opcode op
      :bytes 2
-     :cycles '(3 0)
+     :cycles '(4 0)
      :asm '(:res bit-pos :hl)
      :fun (lambda (cpu gb instr)
             (set-byte-at-hl cpu gb (reset-bit-reg cpu (get-byte-at-hl cpu gb) bit-pos))
@@ -150,7 +150,7 @@
   (make-instruction
      :opcode op
      :bytes 2
-     :cycles '(3 0)
+     :cycles '(4 0)
      :asm '(:set bit-pos hl)
      :fun (lambda (cpu gb instr)
             (set-byte-at-hl cpu gb (set-bit-reg cpu (get-byte-at-hl cpu gb) bit-pos))
@@ -235,11 +235,11 @@
 
 
 (setf (aref ops #x10) (make-instruction
-                        :opcode #x10 :bytes 1 :cycles '(1 0) :asm '(:stop)
+                        :opcode #x10 :bytes 2 :cycles '(1 0) :asm '(:stop)
                         :fun (lambda (cpu gb instr)
-                               (setf (gb-stopped? *gb*) t)
+                               (setf (gb-stopped? gb) t)
                                (write-memory-at-addr gb #xff04 0)
-                               (incr-cpu-counters cpu instr))))
+                               (incf (gbcpu-pc cpu) (instruction-bytes instr)))))
 
 (setf (aref ops #x11) (make-instruction
                         :opcode #x11 :bytes 3 :cycles '(3 0) :asm '(:ld "DE,u16")

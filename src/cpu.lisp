@@ -32,6 +32,18 @@
   (logior lsb (ash msb 8)))
 
 
+(defun get-byte-at-bc (cpu gb)
+  (let ((addr (get-address-from-reg-pair (gbcpu-b cpu) (gbcpu-c cpu))))
+    (read-memory-at-addr gb addr)))
+(defun set-byte-at-bc (cpu gb val)
+  (let ((addr (get-address-from-reg-pair (gbcpu-b cpu) (gbcpu-c cpu))))
+    (write-memory-at-addr gb addr val)))
+(defun get-byte-at-de (cpu gb)
+  (let ((addr (get-address-from-reg-pair (gbcpu-d cpu) (gbcpu-e cpu))))
+    (read-memory-at-addr gb addr)))
+(defun set-byte-at-de (cpu gb val)
+  (let ((addr (get-address-from-reg-pair (gbcpu-d cpu) (gbcpu-e cpu))))
+    (write-memory-at-addr gb addr val)))
 (defun get-byte-at-hl (cpu gb)
   (let ((addr (get-address-from-reg-pair (gbcpu-h cpu) (gbcpu-l cpu))))
     (read-memory-at-addr gb addr)))
