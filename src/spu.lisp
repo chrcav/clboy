@@ -24,8 +24,7 @@
   (frame-sequencer 0)
   (delay 0)
   (cycles 0)
-  (device nil)
-  )
+  (device nil))
 
 (defstruct channel
   (r0 0 :type (unsigned-byte 8))
@@ -45,8 +44,7 @@
   (cur-addr 0)
   (lfsr 0 :type (unsigned-byte 15))
   (ena? nil :type boolean)
-  (dac-ena? t :type boolean)
-  )
+  (dac-ena? t :type boolean))
 
 (defun gbspu-reset (spu)
   (setf (gbspu-ena? spu) nil
@@ -173,13 +171,13 @@
     (setf (channel-r4 channel) val)
     (when (> val #x7f)
       (setf (channel-ena? channel) t
-            (channel-timer channel) (* (channel-freq channel) 4)
+            (channel-timer channel) 0
             (channel-vol channel) (logand (ash (channel-r2 channel) -4) #xf)
             (channel-env-tick channel) (logand (channel-r2 channel) #x7)
-            (channel-lfsr channel) #xff)
-      (channel-sweep-trigger channel)
-      (if (= (channel-len channel) 0)
-        (setf (channel-len channel) (logand (channel-r1 channel) #x1f)))))
+            (channel-lfsr channel) #xff
+            (channel-len channel) (logand (channel-r1 channel) #x1f))
+      ;(channel-sweep-trigger channel)
+      ))
 
 (defun channel-sweep-trigger (channel)
   (step-channel-sweep channel))
@@ -255,6 +253,7 @@
       new-lfsr)))
 
 (defun step-sqare-channel (channel spu)
+  (when (channel-ena? channel)
       (when (and (= (logand (gbspu-frame-sequencer spu) #x3) #x2)
                  (= (gbspu-frame-sequencer-delay spu) 0)
                  (or (> (logand (channel-r0 channel) #x7) 0)
@@ -271,9 +270,10 @@
       (when (and (= (gbspu-frame-sequencer spu) 7)
                  (= (gbspu-frame-sequencer-delay spu) 0)
                  (> (logand (channel-r2 channel) 7) 0))
-        (step-channel-env channel)))
+        (step-channel-env channel))))
 
 (defun step-wave-channel (channel spu)
+  (when (channel-ena? channel)
       (when (and (= (channel-timer channel) 0)
                  (= (channel-cur-bit channel) 0))
         (incf (channel-cur-addr channel))
@@ -285,9 +285,10 @@
       (when (and (= (mod (gbspu-frame-sequencer spu) 2) 0)
                  (= (gbspu-frame-sequencer-delay spu) 0)
                  (= (logand (channel-r4 channel) #x40) #x40))
-        (step-channel-len channel)))
+        (step-channel-len channel))))
 
 (defun step-noise-channel (channel spu)
+  (when (channel-ena? channel)
       (step-noise-channel-seq channel)
 
       (when (and (= (mod (gbspu-frame-sequencer spu) 2) 0)
@@ -298,19 +299,18 @@
       (when (and (= (gbspu-frame-sequencer spu) 7)
                  (= (gbspu-frame-sequencer-delay spu) 0)
                  (> (logand (channel-r2 channel) 7) 0))
-        (step-channel-env channel)))
+        (step-channel-env channel))))
 
 (defun step-wave-channel-seq (channel)
-  (decf (channel-timer channel))
-  (if (= (channel-timer channel) 0)
-    (setf (channel-timer channel) (* (channel-freq channel) 2)
-          (channel-cur-bit channel) (mod (+ (channel-cur-bit channel) 1) 2))))
+  (if (>= (incf (channel-timer channel)) (* (channel-freq channel) 2))
+    (setf (channel-timer channel) 0
+          (channel-cur-bit channel) (if (= (channel-cur-bit channel) 0) 1 0))))
 
 (defun get-wave-channel-output (channel)
   (let* ((wave-val
            (logand (ash (channel-seq channel)
                 (if (= (channel-cur-bit channel) 0) -4 0)) #xf))
-         (wave-val-with-vol (ash wave-val (- 0 (channel-vol channel))))
+         (wave-val-with-vol (ash wave-val (- (channel-vol channel))))
          (output (channel-dac channel wave-val-with-vol)))
     (channel-stereo-output channel output)))
 
@@ -320,9 +320,8 @@
       0.0))
 
 (defun step-channel-seq (channel)
-  (decf (channel-timer channel))
-  (if (= (channel-timer channel) 0)
-    (setf (channel-timer channel) (* (channel-freq channel) 4)
+  (if (>= (incf (channel-timer channel)) (* (channel-freq channel) 4))
+    (setf (channel-timer channel) 0
           (channel-cur-bit channel) (mod (+ (channel-cur-bit channel) 1) 8))))
 (defun get-square-channel-output (channel)
   (let ((output
@@ -335,9 +334,8 @@
     (channel-stereo-output channel output)))
 
 (defun step-noise-channel-seq (channel)
-  (decf (channel-timer channel))
-  (if (<= (channel-timer channel) 0)
-    (setf (channel-timer channel) (channel-noise-freq channel)
+  (if (>= (incf (channel-timer channel)) (channel-noise-freq channel))
+    (setf (channel-timer channel) 0
           (channel-lfsr channel) (gen-lfsr channel))))
 (defun get-noise-channel-output (channel)
   (let ((output (channel-dac channel
@@ -376,9 +374,15 @@
                            cur-freq (ash cur-freq (- channel-sweep)))))
                (if (< new-freq 2048) (set-channel-freq channel new-freq) (setf (channel-ena? channel) nil))))))
 
+(defun spu-queue-audio (spu)
+  ;(sdl2:queue-audio (gbspu-device spu) (gbspu-buffer spu))
+  (sdl2-ffi.functions:sdl-queue-audio
+    (gbspu-device spu)
+    (static-vectors:static-vector-pointer (gbspu-buffer spu))
+    (* (gbspu-buffer-index spu) 4))
+  (setf (gbspu-buffer-index spu) 0))
+
 (defun run-sound (spu)
-  ;(format t "~X~%" (read-sound-ena spu))
-  ;(when (> (logand (read-sound-ena spu) #xf) 0)
   (loop
     repeat (gbspu-cycles spu) do
     (incf (gbspu-frame-sequencer-delay spu))
@@ -402,19 +406,11 @@
             (aref (gbspu-buffer spu) (+ (gbspu-buffer-index spu) 1))
             (* (+ (gbspu-right-vol spu) 1) (cadr output) +audio-normalize-factor+))
       (incf (gbspu-buffer-index spu) 2)))
-    (when (>= (gbspu-buffer-index spu) +audio-buffer-size+)
-      ;(sdl2:queue-audio (gbspu-device spu) (gbspu-buffer spu))
-      (sdl2-ffi.functions:sdl-queue-audio
-        (gbspu-device spu)
-        (static-vectors:static-vector-pointer (gbspu-buffer spu))
-        (* +audio-buffer-size+ 4))
-      (setf (gbspu-buffer-index spu) 0)
-      )));)
+    (when (= (gbspu-buffer-index spu) +audio-buffer-size+)
+      (spu-queue-audio spu))))
 
-(defun step-spu (spu gb)
+(defun step-spu (spu cycles)
   (when (gbspu-ena? spu)
-    (incf (gbspu-cycles spu) (gbcpu-clock (gb-cpu gb)))
-      (run-sound spu)
-      (setf (gbspu-cycles spu) 0)
-      (loop while (> (sdl2:get-queued-audio-size (gbspu-device spu)) (* 4096 4)))
-    ))
+    (incf (gbspu-cycles spu) cycles)
+    (run-sound spu)
+    (setf (gbspu-cycles spu) 0)))
