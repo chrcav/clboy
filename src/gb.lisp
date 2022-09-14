@@ -320,6 +320,10 @@
 
 (defparameter *debug* nil)
 
+(defconstant +cycles-per-internal-time-units+ (floor +cpu-speed+ internal-time-units-per-second))
+(defparameter *cycles-between-sleeps* 70000)
+(defparameter *time-units-per-frame* (* (/ 60) internal-time-units-per-second))
+
 (defun emu-main (gb)
   (sdl2:with-init (:everything)
     (sdl2:with-window (win :title "CL-Boy" :flags '(:shown :opengl) :w (* *width* *scale*) :h (* *height* *scale*))
@@ -331,7 +335,8 @@
                       (* (/ (- *height* +screen-pixel-height+) 2) *scale*)
                       (* +screen-pixel-width+ *scale*) (* +screen-pixel-height+ *scale*)))
               (audio-device (sdl2::open-audio-device +sample-rate+ :f32 2 1024))
-              (controller (sdl2:game-controller-open 0)))
+              (controller (sdl2:game-controller-open 0))
+              (last-frame-time (get-internal-real-time)))
           (loop for c from 0 to (- (sdl2:joystick-count) 1) do
                 (when (sdl2:game-controller-p c)
                   (format t "Found gamecontroller: ~a~%"
@@ -362,18 +367,26 @@
                   (when (not (gb-stopped? gb))
                     (loop while (step-cpu cpu gb)
                           for cyc = 0 then (+ cyc (gbcpu-clock cpu))
-                          while (< cyc 75000) do
+                          while (< cyc *cycles-between-sleeps*) do
                     (if (= (read-memory-at-addr gb #xff02) #x81)
                       (progn
                         (setf *out* (cons (code-char (read-memory-at-addr gb #xff01)) *out*))
                         (write-memory-at-addr gb #xff02 0)))
                     (step-ppu ppu gb)
-                    (step-spu spu gb)
+                    (step-spu spu (gbcpu-clock cpu))
                     (handle-timers cpu gb)
-                    (handle-interrupts cpu gb)))
-                  (sdl2:render-clear renderer)
-                  (sdl2:render-copy renderer texture :dest-rect rect))
-                (sdl2:render-present renderer)))
+                    (handle-interrupts cpu gb))))
+                (spu-queue-audio spu)
+                (sdl2:render-clear renderer)
+                (sdl2:render-copy renderer texture :dest-rect rect)
+                (sdl2:render-present renderer)
+                (let ((now (get-internal-real-time)))
+                  (when (< (- now last-frame-time) *time-units-per-frame*)
+                    (sleep
+                      (/ (- *time-units-per-frame*
+                            (- now last-frame-time))
+                         internal-time-units-per-second)))
+                  (setf last-frame-time now))))
             (:quit () t)))))))
 
 
@@ -383,7 +396,6 @@
   (gbppu-reset (gb-ppu gb))
   (gbspu-reset (gb-spu gb))
   (setf (gb-cpu gb) (make-gbcpu)
-  ; doing this to reset scroll values. but might not be necessary.
         (gb-is-bios? gb) t
         (gb-stopped? gb) nil)
   nil)
