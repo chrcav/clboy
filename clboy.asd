@@ -10,13 +10,13 @@
                          :serial t
                          :components
                            ((:file "package")
-                           (:file "utils")
-                           (:file "cpu")
-                           (:file "opcodes")
-                           (:file "ppu")
-                           (:file "spu")
-                           (:file "cart")
-                           (:file "gb")))))
+                            (:file "utils")
+                            (:file "cpu")
+                            (:file "opcodes")
+                            (:file "ppu")
+                            (:file "spu")
+                            (:file "cart")
+                            (:file "gb")))))
 
 (defsystem "clboy/test"
            :description "tests for clboy system"

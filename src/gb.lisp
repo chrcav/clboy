@@ -135,8 +135,6 @@
 
 ;; utils
 
-(defun bool-as-bit (bool) (if bool 1 0))
-
 (defun make-bios ()
   (make-array #x100 :initial-contents *dmg-bios*))
 
@@ -339,10 +337,9 @@
               (last-frame-time (get-internal-real-time)))
           (loop for c from 0 to (- (sdl2:joystick-count) 1) do
                 (when (sdl2:game-controller-p c)
-                  (format t "Found gamecontroller: ~a~%"
+                  (format t "Found controller: ~a~%"
                           (sdl2:game-controller-name-for-index c))
                   (sdl2:game-controller-open c)))
-          (format t "~A~%" audio-device)
           (sdl2::unpause-audio-device audio-device)
           (setf (gbppu-renderer (gb-ppu gb)) renderer)
           (setf (gbppu-texture (gb-ppu gb)) texture)
@@ -375,10 +372,10 @@
                     (step-ppu ppu gb)
                     (step-spu spu (gbcpu-clock cpu))
                     (handle-timers cpu gb)
-                    (handle-interrupts cpu gb))))
+                    (handle-interrupts cpu gb))
                 (spu-queue-audio spu)
                 (sdl2:render-clear renderer)
-                (sdl2:render-copy renderer texture :dest-rect rect)
+                (sdl2:render-copy renderer texture :dest-rect rect)))
                 (sdl2:render-present renderer)
                 (let ((now (get-internal-real-time)))
                   (when (< (- now last-frame-time) *time-units-per-frame*)

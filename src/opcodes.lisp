@@ -16,7 +16,7 @@
      :cycles '(1 0)
      :asm '(:inc ,reg)
      :fun (lambda (cpu gb instr)
-            (setf (,(utils:symb 'gbcpu- reg) cpu) (incr-reg cpu (,(utils:symb 'gbcpu- reg) cpu)))
+            (setf (,(clboy-utils:symb 'gbcpu- reg) cpu) (incr-reg cpu (,(clboy-utils:symb 'gbcpu- reg) cpu)))
             (incr-cpu-counters cpu instr))))
 (defmacro defdecop (op reg)
   `(make-instruction
@@ -25,7 +25,7 @@
      :cycles '(1 0)
      :asm '(:dec ,reg)
      :fun (lambda (cpu gb instr)
-            (setf (,(utils:symb 'gbcpu- reg) cpu) (decr-reg cpu (,(utils:symb 'gbcpu- reg) cpu)))
+            (setf (,(clboy-utils:symb 'gbcpu- reg) cpu) (decr-reg cpu (,(clboy-utils:symb 'gbcpu- reg) cpu)))
             (incr-cpu-counters cpu instr))))
 
 (defmacro definc16op (op reg1 reg2)
@@ -33,18 +33,18 @@
      :opcode ,op
      :bytes 1
      :cycles '(2 0)
-     :asm '(:inc ,(utils:symb reg2 reg2))
+     :asm '(:inc ,(clboy-utils:symb reg2 reg2))
      :fun (lambda (cpu gb instr)
-            (,(utils:symb 'set-reg-pair- reg1 reg2 '-to-val) cpu (incr-reg-pair (,(utils:symb 'gbcpu- reg1) cpu) (,(utils:symb 'gbcpu- reg2) cpu)))
+            (,(clboy-utils:symb 'set-reg-pair- reg1 reg2 '-to-val) cpu (incr-reg-pair (,(clboy-utils:symb 'gbcpu- reg1) cpu) (,(clboy-utils:symb 'gbcpu- reg2) cpu)))
             (incr-cpu-counters cpu instr))))
 (defmacro defdec16op (op reg1 reg2)
   `(make-instruction
      :opcode ,op
      :bytes 1
      :cycles '(2 0)
-     :asm '(:dec ,(utils:symb reg2 reg2))
+     :asm '(:dec ,(clboy-utils:symb reg2 reg2))
      :fun (lambda (cpu gb instr)
-            (,(utils:symb 'set-reg-pair- reg1 reg2 '-to-val) cpu (decr-reg-pair (,(utils:symb 'gbcpu- reg1) cpu) (,(utils:symb 'gbcpu- reg2) cpu)))
+            (,(clboy-utils:symb 'set-reg-pair- reg1 reg2 '-to-val) cpu (decr-reg-pair (,(clboy-utils:symb 'gbcpu- reg1) cpu) (,(clboy-utils:symb 'gbcpu- reg2) cpu)))
             (incr-cpu-counters cpu instr))))
 
 (defun defldop (op dest src)
@@ -84,7 +84,7 @@
      :cycles '(1 0)
      :asm '(:cp :a ,src)
      :fun (lambda (cpu gb instr)
-            (cp-reg-with-val cpu (gbcpu-a cpu) (,(utils:symb 'gbcpu- src) cpu))
+            (cp-reg-with-val cpu (gbcpu-a cpu) (,(clboy-utils:symb 'gbcpu- src) cpu))
             (incr-cpu-counters cpu instr))))
 
 (defun defcbprefop (op fun reg)

@@ -1,9 +1,9 @@
 
 
-(defpackage :utils
+(defpackage :clboy-utils
   (:use :common-lisp)
-  (:export symb))
-(in-package :utils)
+  (:export symb bool-as-bit))
+(in-package :clboy-utils)
 
 (defun mkstr (&rest args)
   ;;; From On Lisp, page 58.
@@ -14,3 +14,5 @@
 (defun symb (&rest args)
   ;;; From On Lisp, page 58.
   (values (intern (apply #'mkstr args))))
+
+(defun bool-as-bit (bool) (if bool 1 0))
