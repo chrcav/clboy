@@ -19,6 +19,8 @@
 ;; MMU
 
 (defun write-memory-at-addr (gb addr val)
+  "Routes various writes for GB to various other components (i.e. ppu, cart, etc.) based on ADDR.
+  Location is set to or modified based on VAL"
   (case (logand addr #xf000)
     ((#x0000 #x1000 #x2000 #x3000 #x4000
       #x5000 #x6000 #x7000 #xa000 #xb000)
@@ -46,6 +48,7 @@
           (otherwise (setf (aref (gb-zero-page gb) (logand addr #xff)) val))))))))
 
 (defun read-memory-at-addr (gb addr)
+  "Routes various reads for GB to various other components (i.e. ppu, cart, etc.) based on ADDR."
   (case (logand addr #xf000)
     ((#x0000 #x1000 #x2000 #x3000 #x4000
       #x5000 #x6000 #x7000 #xa000 #xb000)
@@ -74,13 +77,16 @@
             (#x50 (if (= (logand addr #xff) #x50) (if (gb-is-bios? gb) #xff #x00)))
             (otherwise (aref (gb-zero-page gb) (logand addr #xff)))))))))
 
-(defun get-address-from-memory (gb pc)
-  (let* ((lsb (read-memory-at-addr gb pc))
-         (msb (read-memory-at-addr gb (+ pc 1))))
+(defun get-address-from-memory (gb addr)
+  "Reads a 16-bit address from memory of GB at ADDR in little endian"
+  (let ((lsb (read-memory-at-addr gb addr))
+        (msb (read-memory-at-addr gb (+ addr 1))))
     (logior lsb (ash msb 8))))
 
 ;; INTERRUPTS
 (defun handle-interrupts (cpu gb)
+  "handles interrupts that are enabled and active based on registers at #xff0f and #xffff. Interrupts
+  are passed to the CPU to execute a call like instruction"
   ; VBLANK interupt
   (if (= (logand (logand (read-memory-at-addr gb #xffff) #x01) (logand (read-memory-at-addr gb #xff0f) #x01)) #x01)
     (do-interrupt cpu gb 0)
@@ -102,6 +108,7 @@
 
 ;; TIMER
 (defun handle-timers (cpu gb)
+  "updates timer registers based on the number of cycles from the last instruction."
   (if (> (gbcpu-div-clock cpu) #xff)
     (progn
       (setf (gbcpu-div-clock cpu) (- (gbcpu-div-clock cpu) #x100))
@@ -111,6 +118,8 @@
     (setf (gbcpu-clock cpu) 0)))
 
 (defun incr-timer-by-cycles (cpu gb cycles-per-tick)
+  "incements the timer by the number of cycles of the last instuction and triggers interrupt when
+  CYCLES-PER-TICK cycles have elapsed since last interrupt"
   (let* ((cycles (+ (gbcpu-clock cpu) (gbcpu-clock-remainder cpu)))
          (ticks (floor cycles cycles-per-tick))
          (remainder (mod cycles cycles-per-tick))
@@ -124,6 +133,7 @@
       (write-memory-at-addr gb #xff05 (logand new-ticks #xff)))))
 
 (defun get-cycles-per-timer-tick (freq)
+  "number of cycles per timer tick based on the FREQ of the timer."
   (/ +cpu-speed+ freq))
 
 (defun get-timer-frequency (tac)
@@ -134,9 +144,6 @@
           4096)))))
 
 ;; utils
-
-(defun make-bios ()
-  (make-array #x100 :initial-contents *dmg-bios*))
 
 (defparameter *dmg-bios*
   '(#x31 #xFE #xFF #xAF #x21 #xFF #x9F #x32 #xCB #x7C #x20 #xFB #x21 #x26 #xFF #x0E
@@ -154,37 +161,44 @@
     #xDC #xCC #x6E #xE6 #xDD #xDD #xD9 #x99 #xBB #xBB #x67 #x63 #x6E #x0E #xEC #xCC
     #xDD #xDC #x99 #x9F #xBB #xB9 #x33 #x3E #x3C #x42 #xB9 #xA5 #xB9 #xA5 #x42 #x3C
     #x21 #x04 #x01 #x11 #xA8 #x00 #x1A #x13 #xBE #x20 #xFE #x23 #x7D #xFE #x34 #x20
-    #xF5 #x06 #x19 #x78 #x86 #x23 #x05 #x20 #xFB #x86 #x20 #xFE #x3E #x01 #xE0 #x50))
+    #xF5 #x06 #x19 #x78 #x86 #x23 #x05 #x20 #xFB #x86 #x20 #xFE #x3E #x01 #xE0 #x50)
+  "DMG bios as a list of bytes")
+
+(defun make-bios ()
+  "creates the bios array of memory for the gb based on *DMG-BIOS* parameter."
+  (make-array #x100 :initial-contents *dmg-bios*))
 
 (defun read-rom-data-from-file (filename)
+  "reads rom data from a file referenced by FILENAME as a list of bytes"
   (with-open-file (bin filename :element-type '(unsigned-byte 8))
     (loop for b = (read-byte bin nil) while b collect b)))
 
 (defun make-signed-from-unsigned (unsign-byte)
+  "convert a unsigned byte to a signed byte"
   (if (< unsign-byte 128)
       unsign-byte
       (logior unsign-byte (- (mask-field (byte 1 7) #xff)))))
 
-;; PPU
-
-
 ;; I/O
 
 (defun get-p14-byte (input)
-   ; p14 down up left right
+  "calculates a byte that represents INPUT when p14 is active based on the state of buttons:
+  down, up, left, and right."
   (+ (if (gbinput-down input) #x0 #x8)
      (if (gbinput-up input) #x0 #x4)
      (if (gbinput-left input) #x0 #x2)
      (if (gbinput-right input) #x0 #x1)))
 
 (defun get-p15-byte (input)
- ; p15 start select b a
+  "calculates a byte that represents INPUT when p14 is active based on the state of buttons:
+  start, select, b, and a."
   (+ (if (gbinput-start input) #x0 #x8)
      (if (gbinput-select input) #x0 #x4)
      (if (gbinput-b input) #x0 #x2)
      (if (gbinput-a input) #x0 #x1)))
 
 (defun input-read-memory (input)
+  "read the INPUT data based on whether p14 or p15 is active for reading"
   (let ((input-val (logand (gbinput-reg input) #x30)))
     (if (= input-val #x30) ; both p14 and p15 inactive
       (logior input-val #x0f)
@@ -195,6 +209,8 @@
       #x0f)))))
 
 (defun handle-keyup (input gb keysym)
+  "handles keyup events from SDL2 by updating the state of each button in INPUT and special keys
+  like quit and reset. Each key is identified by KEYSYM."
   (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-escape)
     (sdl2:push-event :quit))
   (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-p)
@@ -202,7 +218,7 @@
   (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-r)
     (gb-reset gb))
   (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-b)
-    (render-full-background (gb-ppu gb) gb))
+    (render-full-background (gb-ppu gb)))
   (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-w)
     (setf (gbinput-up input) nil))
   (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-a)
@@ -220,7 +236,9 @@
   (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-j)
     (setf (gbinput-a input) nil)))
 
-(defun handle-keydown (gb input keysym)
+(defun handle-keydown (input gb keysym)
+  "handles keydown events from SDL2 by updating the state of each button in INPUT and special keys
+  like quit and reset. Each key is identified by KEYSYM."
   (setf (gb-stopped? gb) nil)
   (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-w)
     (set-interrupt-flag gb 4)
@@ -247,7 +265,9 @@
     (set-interrupt-flag gb 4)
     (setf (gbinput-a input) t)))
 
-(defun handle-controlleraxismotion (gb input controller axis value)
+(defun handle-controlleraxismotion (input axis value)
+  "handles controlleraxismotion events from SDL2 by updating the state of each button in INPUT and special keys
+  like quit and reset. Each key is identified by KEYSYM."
   (when (= axis sdl2-ffi:+sdl-controller-axis-leftx+)
     (if (< value -10000)
       (setf (gbinput-left input) t)
@@ -263,7 +283,9 @@
       (setf (gbinput-down input) t)
       (setf (gbinput-down input) nil))))
 
-(defun handle-controllerbuttondown (gb input button)
+(defun handle-controllerbuttondown (input gb button)
+  "handles controllerbuttondown events from SDL2 by updating the state of each button in INPUT and special keys
+  like quit and reset. Each key is identified by KEYSYM."
   (when (= button sdl2-ffi:+sdl-controller-button-dpad-up+)
     (set-interrupt-flag gb 4)
     (setf (gbinput-up input) t))
@@ -289,7 +311,9 @@
     (set-interrupt-flag gb 4)
     (setf (gbinput-b input) t)))
 
-(defun handle-controllerbuttonup (gb input button)
+(defun handle-controllerbuttonup (input button)
+  "handles controllerbuttonup events from SDL2 by updating the state of each button in INPUT and special keys
+  like quit and reset. Each key is identified by KEYSYM."
   (when (= button sdl2-ffi:+sdl-controller-button-dpad-up+)
     (setf (gbinput-up input) nil))
   (when (= button sdl2-ffi:+sdl-controller-button-dpad-left+)
@@ -311,18 +335,21 @@
 
 ;; SPU
 
-(defparameter *out* ())
 (defparameter *width* 256)
 (defparameter *height* 256)
 (defparameter *scale* 3)
 
-(defparameter *debug* nil)
+(defparameter *debug* nil
+  "when T debug info is collected/printed")
 
 (defconstant +cycles-per-internal-time-units+ (floor +cpu-speed+ internal-time-units-per-second))
-(defparameter *cycles-between-sleeps* 70000)
-(defparameter *time-units-per-frame* (* (/ 60) internal-time-units-per-second))
+(defconstant +cycles-per-frame+ (+ (floor +cpu-speed+ 60) 1))
+(defconstant +time-units-per-frame+ (* (/ 60) internal-time-units-per-second))
 
 (defun emu-main (gb)
+  "Main loop for CL-Boy Game Boy emulator. handles setting up the window, controllers, and audio
+  device. Loops through instructions and delegates to each component based on the clock cycles of
+  each instruction."
   (sdl2:with-init (:everything)
     (sdl2:with-window (win :title "CL-Boy" :flags '(:shown :opengl) :w (* *width* *scale*) :h (* *height* *scale*))
       (sdl2:with-renderer (renderer win)
@@ -333,8 +360,8 @@
                       (* (/ (- *height* +screen-pixel-height+) 2) *scale*)
                       (* +screen-pixel-width+ *scale*) (* +screen-pixel-height+ *scale*)))
               (audio-device (sdl2::open-audio-device +sample-rate+ :f32 2 1024))
-              (controller (sdl2:game-controller-open 0))
               (last-frame-time (get-internal-real-time)))
+          (sdl2:game-controller-open 0)
           (loop for c from 0 to (- (sdl2:joystick-count) 1) do
                 (when (sdl2:game-controller-p c)
                   (format t "Found controller: ~a~%"
@@ -346,16 +373,16 @@
           (setf (gbspu-device (gb-spu gb)) audio-device)
           (sdl2:with-event-loop (:method :poll)
             (:keydown (:keysym keysym)
-                      (handle-keydown gb (gb-input gb) keysym))
+                      (handle-keydown (gb-input gb) gb keysym))
             (:keyup (:keysym keysym)
                     (handle-keyup (gb-input gb) gb keysym))
             (:controlleraxismotion
-                           (:which controller :axis axis :value value)
-                           (handle-controlleraxismotion gb (gb-input gb) controller axis value))
+                           (:axis axis :value value)
+                           (handle-controlleraxismotion (gb-input gb) axis value))
             (:controllerbuttondown (:button button)
-                                   (handle-controllerbuttondown gb (gb-input gb) button))
+                                   (handle-controllerbuttondown (gb-input gb) gb button))
             (:controllerbuttonup (:button button)
-                                 (handle-controllerbuttonup gb (gb-input gb) button))
+                                 (handle-controllerbuttonup (gb-input gb) button))
             (:idle ()
               (let ((cpu (gb-cpu gb))
                     (ppu (gb-ppu gb))
@@ -364,11 +391,7 @@
                   (when (not (gb-stopped? gb))
                     (loop while (step-cpu cpu gb)
                           for cyc = 0 then (+ cyc (gbcpu-clock cpu))
-                          while (< cyc *cycles-between-sleeps*) do
-                    (if (= (read-memory-at-addr gb #xff02) #x81)
-                      (progn
-                        (setf *out* (cons (code-char (read-memory-at-addr gb #xff01)) *out*))
-                        (write-memory-at-addr gb #xff02 0)))
+                          while (< cyc +cycles-per-frame+) do
                     (step-ppu ppu gb)
                     (step-spu spu (gbcpu-clock cpu))
                     (handle-timers cpu gb)
@@ -378,9 +401,9 @@
                 (sdl2:render-copy renderer texture :dest-rect rect)))
                 (sdl2:render-present renderer)
                 (let ((now (get-internal-real-time)))
-                  (when (< (- now last-frame-time) *time-units-per-frame*)
+                  (when (< (- now last-frame-time) +time-units-per-frame+)
                     (sleep
-                      (/ (- *time-units-per-frame*
+                      (/ (- +time-units-per-frame+
                             (- now last-frame-time))
                          internal-time-units-per-second)))
                   (setf last-frame-time now))))
@@ -390,6 +413,7 @@
 (defparameter *gb* (make-gb))
 
 (defun gb-reset (gb)
+  "resets GB to start at the beginning of the bios with everything cleared"
   (gbppu-reset (gb-ppu gb))
   (gbspu-reset (gb-spu gb))
   (setf (gb-cpu gb) (make-gbcpu)
@@ -398,26 +422,28 @@
   nil)
 
 (defun load-cart (cart)
+  "load CART into GB"
   (gb-reset *gb*)
   (setf (gb-cart *gb*) cart)
   nil)
 (defun unload-cart ()
+  "unload CART into GB"
   (gb-reset *gb*)
   (setf (gb-cart *gb*) nil)
   nil)
 
 (defun dump-mem-region (start end)
+  "reads the region of memory from START to END inclusive as a list of bytes."
   (loop for a from start to end
         collect (read-memory-at-addr *gb* a)))
 
 (defun dump-oam ()
+  "reads the OAM as a list of bytes."
   (dump-mem-region #xfe00 #xfea0))
 
 (defun dump-blargg-output ()
+  "reads the blargg test rom memory region where output is stored as a list of bytes"
   (dump-mem-region #x9800 #x9BFF))
-
-(defun dump-out ()
-  (format t "~{~A~}" (reverse *out*)))
 
 (defparameter *silver-cart*  (make-gbcart-from-rom "roms/silver.gbc"))
 
@@ -450,5 +476,7 @@
 ;(load-cart (make-gbcart-from-rom "./mts-20220522-1522-55c535c/emulator-only/mbc1/multicart_rom_8Mb.gb"))
 
 
-(defun run () (emu-main *gb*))
+(defun run ()
+  "runs the main loop with the global *GB*"
+  (emu-main *gb*))
 

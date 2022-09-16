@@ -3,6 +3,7 @@
 (in-package :clboy)
 
 (defstruct instruction
+  "Represents a GameBoy cpu instruction"
   (opcode #x00)
   (bytes 1)
   (cycles 1)

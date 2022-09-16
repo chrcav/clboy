@@ -13,6 +13,7 @@
 (defconstant +tilemap-tile-height+ 32)
 
 (defstruct ppulcdc
+  "LCDC register struct"
   (byte-rep 0 :type (unsigned-byte 8))
   (enabled? t :type boolean)
   (win-tilemap-area #x9800)
@@ -24,12 +25,14 @@
   (bgwin-enabled? t :type boolean))
 
 (defstruct ppustat
+  "STAT register struct"
   (lyc-int-enabled? nil :type boolean)
   (mode2-int-enabled? nil :type boolean)
   (mode1-int-enabled? nil :type boolean)
   (mode0-int-enabled? nil :type boolean))
 
 (defstruct gbppu
+  "main PPU struct for handling video output"
   (framebuffer (static-vectors:make-static-vector (* +screen-pixel-width+ +screen-pixel-height+ 3)))
   (framebuffer-a (static-vectors:make-static-vector (* +screen-pixel-width+ +screen-pixel-height+ 4)))
   (bg-buffer (make-array (* +tilemap-pixel-width+ +tilemap-pixel-height+) :initial-element 0 :element-type '(unsigned-byte 8)))
@@ -59,6 +62,7 @@
                        (0  0  0)))
 
 (defun gbppu-reset (ppu)
+  "resets the PPU slots"
   (setf (gbppu-scy ppu) 0
         (gbppu-scx ppu) 0
         (gbppu-wy ppu) 0
@@ -67,6 +71,7 @@
         (gbppu-lcdc ppu) (make-ppulcdc)))
 
 (defun ppu-write-lcdc (ppu val)
+  "saves the lcdc byte as a ppulcdc struct in PPU based on VAL"
   (setf (gbppu-lcdc ppu)
         (make-ppulcdc
           :byte-rep val
@@ -81,6 +86,7 @@
         (gbppu-enabled? ppu) (> (logand val #x80) 0)))
 
 (defun ppu-read-lcdc (lcdc)
+  "constructs a byte from the ppulcdc struct and PPU"
   (logior (ppulcdc-byte-rep lcdc)
           (ash (clboy-utils:bool-as-bit (ppulcdc-enabled? lcdc)) 7)
           (ash (clboy-utils:bool-as-bit (ppulcdc-window-enabled? lcdc)) 5)
@@ -88,6 +94,7 @@
           (clboy-utils:bool-as-bit (ppulcdc-bgwin-enabled? lcdc))))
 
 (defun ppu-write-stat (ppu val)
+  "saves the stat byte as a ppustat struct in PPU based on VAL"
   (setf (gbppu-stat ppu)
         (make-ppustat
           :lyc-int-enabled? (= (logand val #x40) #x40)
@@ -96,6 +103,7 @@
           :mode0-int-enabled? (= (logand val #x08) #x08))))
 
 (defun ppu-read-stat (ppu)
+  "constructs a byte from the ppustat struct and PPU"
   (logior (ash (clboy-utils:bool-as-bit (ppustat-lyc-int-enabled? (gbppu-stat ppu))) 6)
           (ash (clboy-utils:bool-as-bit (ppustat-mode2-int-enabled? (gbppu-stat ppu))) 5)
           (ash (clboy-utils:bool-as-bit (ppustat-mode1-int-enabled? (gbppu-stat ppu))) 4)
@@ -104,6 +112,7 @@
           (gbppu-mode ppu)))
 
 (defun ppu-write-memory-at-addr (ppu addr val)
+  "writes memory from PPU at ADDR which can be vram, oam, or PPU registers to VAL"
   (ecase (logand addr #xf000)
     ((#x8000 #x9000)
       (setf (aref (gbppu-vram ppu) (logand addr #x1fff)) val))
@@ -126,6 +135,7 @@
           (otherwise ())))))))
 
 (defun ppu-read-memory-at-addr (ppu addr)
+  "reads memory from PPU at ADDR which can be vram, oam, or PPU registers"
   (ecase (logand addr #xf000)
     ((#x8000 #x9000)
       (aref (gbppu-vram ppu) (logand addr #x1fff)))
@@ -149,6 +159,8 @@
           (otherwise #xff)))))))
 
 (defun read-sprite (ppu addr)
+  "reads the 4 bytes of a sprite at ADDR. sprite y location, sprite x location, sprite tile index,
+  and sprite flags"
   (loop for a from addr to (+ addr 3)
         collect (ppu-read-memory-at-addr ppu a)))
 
@@ -162,6 +174,7 @@
        (< (car sprite) (+ (gbppu-scy ppu) (ppulcdc-sprite-height (gbppu-lcdc ppu))))))
 
 (defun add-sprites-to-ppu-framebuffer (ppu)
+  "loops through oam and adds sprites to framebuffer that overlap the current scanline location."
   (loop for addr = #xfe00 then (+ addr 4)
         while (< addr #xfea0)
         for sprite = (read-sprite ppu addr)
@@ -172,11 +185,14 @@
    (- row (- sprite-y 16)))
 
 (defun calc-sprite-tile-addr (tile-no sprite-flags sprite-y-offset sprite-height)
+  "calculates the memory address of a sprites tile pixel data"
   (+ #x8000 (* tile-no 16)
      (* (if (> (logand sprite-flags #x40) 0)
           (- sprite-height sprite-y-offset) sprite-y-offset) 2)))
 
 (defun add-sprite-to-ppu-framebuffer (ppu sprite)
+  "adds a row of pixels from the visible portion of a sprite corresponding to the scanline
+  location."
   (let ((tile-no (if (= (ppulcdc-sprite-height (gbppu-lcdc ppu)) 16) (logand (caddr sprite) #xfe) (caddr sprite)))
         (sprite-y-offset (calc-sprite-y-offset (gbppu-cur-line ppu) (car sprite))))
     (render-tile-line ppu
@@ -193,6 +209,8 @@
 (defun render-tile-line (ppu framebuffer row tile-row-addr
                          &key (start-x 0) (xflip? nil) (is-background? nil) (priority 0)
                          (palette 0) (framebuffer-width +screen-pixel-width+))
+  "adds a row of pixels from the visible portion of a tile corresponding to the scanline
+  location."
   (let ((colorbyte1 (ppu-read-memory-at-addr ppu tile-row-addr))
         (colorbyte2 (ppu-read-memory-at-addr ppu (+ tile-row-addr 1))))
   (loop for i from 0 to 7
@@ -213,6 +231,8 @@
                    :start1 (+ (* row framebuffer-width 3) (* col 3)))))))))
 
 (defun add-window-to-ppu-framebuffer (ppu)
+  "adds a row of pixels from the visible portion of the window corresponding to the scanline
+  location."
   (let ((row (gbppu-cur-line ppu)))
     (when (and (< row +screen-pixel-height+)
                (>= row (gbppu-wy ppu))
@@ -235,6 +255,8 @@
                           :palette (gbppu-bg-palette ppu)))))))
 
 (defun add-background-to-ppu-framebuffer (ppu)
+  "adds a row of pixels from the visible portion of the background corresponding to the scanline
+  location."
   (when (< (gbppu-cur-line ppu) +screen-pixel-height+)
     (loop for col = 0 then (+ col (- 8 (mod xoffset 8)))
           for xoffset = (+ col (gbppu-scx ppu))
@@ -256,6 +278,7 @@
                           :palette (gbppu-bg-palette ppu))))))
 
 (defun maybe-do-dma (ppu gb)
+  "checks for DMA and processed copying memory into OAM"
   (let ((initial (ash (gbppu-do-dma ppu) 8)))
     (when (> initial 0)
       (loop for i from 0 to (- +screen-pixel-width+ 1)
@@ -266,15 +289,18 @@
       (setf (gbppu-do-dma ppu) 0))))
 
 (defun check-ly-lyc (ppu gb)
+  "compares ly and lyc registers, triggers interrupt if they match and the interrupt is enabled"
   (when (= (gbppu-cur-line ppu) (gbppu-cur-line-comp ppu))
     (if (ppustat-lyc-int-enabled? (gbppu-stat ppu)) (set-interrupt-flag gb 1))))
 
 (defun ppu-mode-transition (ppu gb mode)
+  "transitions PPU to MODE 0-3 triggers interrupt if enabled"
   (setf (gbppu-cycles ppu) 0)
   (setf (gbppu-mode ppu) mode)
   (if (stat-int-enabled-for-mode? (gbppu-stat ppu) mode) (set-interrupt-flag gb 1)))
 
 (defun stat-int-enabled-for-mode? (stat mode)
+  "predicate for ppu MODE interrupt enabled flags in STAT"
   (case mode
     (0 (ppustat-mode0-int-enabled? stat))
     (1 (ppustat-mode1-int-enabled? stat))
@@ -283,15 +309,16 @@
 
 
 (defun render-scanline (ppu)
+  "processes the background, window, and sprites based on lcdc flags and video memory"
   (when (ppulcdc-bgwin-enabled? (gbppu-lcdc ppu)) ; TODO this should trigger the background losing priority
     (add-background-to-ppu-framebuffer ppu)
     (when (ppulcdc-window-enabled? (gbppu-lcdc ppu))
       (add-window-to-ppu-framebuffer ppu)))
   (when (ppulcdc-obj-enabled? (gbppu-lcdc ppu))
-    (add-sprites-to-ppu-framebuffer ppu))
-  )
+    (add-sprites-to-ppu-framebuffer ppu)))
 
-(defun render-full-background (ppu gb)
+(defun render-full-background (ppu)
+  "Provides a way to draw the entire 256x256 background stored in the tilemap."
   (let ((texture (sdl2:create-texture (gbppu-renderer ppu) :rgb24 :streaming +tilemap-pixel-width+ +tilemap-pixel-height+))
         (framebuffer (static-vectors:make-static-vector (* +tilemap-pixel-width+ +tilemap-pixel-height+ 3))))
     (loop for row from 0 to (- +tilemap-pixel-height+ 1)
@@ -320,6 +347,7 @@
     (sdl2:render-present (gbppu-renderer ppu))))
 
 (defun update-screen (ppu gb texture)
+  "takes the current framebuffer and copies it into the TEXTURE"
   (set-interrupt-flag gb 0)
   (sdl2:update-texture
     texture
@@ -328,6 +356,8 @@
       (gbppu-framebuffer ppu)) (* +screen-pixel-width+ 3)))
 
 (defun step-ppu (ppu gb)
+  "handles updating the PPU mode and drawing to a texture when the defined number of cycles have
+  elapsed. transitions the PPU through the modes and processes vram."
   (when (and (not (gbppu-enabled? ppu))
              (> (gbppu-cycles ppu) 0))
     (setf (gbppu-cycles ppu) 0)

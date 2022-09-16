@@ -7,6 +7,7 @@
 
 
 (defstruct gb
+  "defines a GameBoy system"
   (cpu (make-gbcpu))
   (ppu (make-gbppu))
   (spu (make-gbspu))

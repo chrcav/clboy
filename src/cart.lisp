@@ -3,6 +3,8 @@
 (in-package :clboy)
 
 (defstruct gbcart
+  "represents a gameboy cartridge with variable size ROM and RAM space.
+  RAM and ROM are bankable based on the different CARTTYPEs"
   (rom (make-array #x8000 :element-type '(unsigned-byte 8)))
   (ram (make-array #x2000 :initial-element 0 :element-type '(unsigned-byte 8)))
   (filename nil)
@@ -18,6 +20,7 @@
 
 
 (defun make-gbcart-from-rom (filename)
+  "Makes a new GBCART based on the rom data found in FILENAME"
   (let ((cart (make-gbcart :filename filename)))
     (replace-memory-with-rom cart filename)
     (get-carttype-from-rom cart)
@@ -26,13 +29,21 @@
     cart))
 
 (defun replace-memory-with-rom (cart file)
+  "given a GBCART CART replace rom with FILE contents"
   (let ((rom (read-rom-data-from-file file)))
     (setf (gbcart-rom cart) (make-array (length rom) :element-type '(unsigned-byte 8)))
     (replace (gbcart-rom cart) rom)))
 
-(defun get-carttype-from-rom (cart) (setf (gbcart-carttype cart) (cart-read-memory-at-addr cart #x147)))
-(defun get-rommask-from-rom (cart) (setf (gbcart-rommask cart) (- (ash #x02 (cart-read-memory-at-addr cart #x148)) 1)))
+(defun get-carttype-from-rom (cart)
+  "read carttype value from CART memory"
+  (setf (gbcart-carttype cart) (cart-read-memory-at-addr cart #x147)))
+
+(defun get-rommask-from-rom (cart)
+  "Read rommask value based on CART rom size memory location"
+  (setf (gbcart-rommask cart) (- (ash #x02 (cart-read-memory-at-addr cart #x148)) 1)))
+
 (defun get-ramsize-from-rom (cart)
+  "Read ramsize from CART header memory location"
   (let ((rambanks (case (aref (gbcart-rom cart) #x0149)
                    (#x00 0)
                    (#x02 1)
@@ -43,6 +54,8 @@
     (setf (gbcart-rammask cart) (- rambanks 1))))
 
 (defun cart-read-memory-at-addr (cart addr)
+  "Route memory reads from mmu to CART memory at ADDR. Memory can be ROM, RAM, or other cart data
+  based on address and mbc flags"
   (case (gbcart-carttype cart)
        ((#x1 #x2 #x3) (cart-mbc1-read cart addr))
        ((#x5 #x6) (cart-mbc2-read cart addr))
@@ -55,6 +68,8 @@
             (aref (gbcart-ram cart) addr))))))
 
 (defun cart-write-memory-at-addr (cart addr val)
+  "Route memory writes from mmu to CART memory at ADDR. Memory can be ROM, RAM, or other cart data
+  based on address and mbc flags"
   (case (gbcart-carttype cart)
     ((#x1 #x2 #x3) (cart-mbc1-write cart addr val))
     ((#x5 #x6) (cart-mbc2-write cart addr val))
@@ -67,6 +82,7 @@
                val))))))
 
 (defun cart-mbc1-read (cart addr)
+  "CART memory reads for mbc1 type cartridges. reads the memory at ADDR based on which banks are selected."
   (case (logand addr #xf000)
     ((#x0000 #x1000 #x2000 #x3000)
      (aref (gbcart-rom cart) (+ (* (logand (if (= (gbcart-mode cart) 1) (gbcart-rombank cart) 0) #x60) #x4000) (logand addr #x3fff))))
@@ -78,6 +94,8 @@
        #xff))))
 
 (defun cart-mbc1-write (cart addr val)
+  "CART memory writes for mbc1 cartridges. writes at ADDR with VAL will modify ram values or update
+  various mbc flags"
   (case (logand addr #xf000)
     ((#x0000 #x1000)
      (setf (gbcart-ramon cart) (= (logand val #xf) #x0a)))
@@ -104,6 +122,7 @@
        (setf (aref (gbcart-ram cart) (+ (* (gbcart-rambank cart) #x2000) (logand addr #x1fff))) val)))))
 
 (defun cart-mbc2-read (cart addr)
+  "CART memory reads for mbc2 type cartridges. reads the memory at ADDR based on which banks are selected."
   (case (logand addr #xf000)
     ((#x0000 #x1000 #x2000 #x3000)
       (aref (gbcart-rom cart) (+ (* (logand (if (= (gbcart-mode cart) 1) (gbcart-rombank cart) 0) #x60) #x4000) (logand addr #x3fff))))
@@ -115,6 +134,8 @@
         #xff))))
 
 (defun cart-mbc2-write (cart addr val)
+  "CART memory writes for mbc2 cartridges. writes at ADDR with VAL will modify ram values or update
+  various mbc flags"
   (case (logand addr #xf000)
     ((#x0000 #x1000 #x2000 #x3000)
      (if (= (logand addr #x100) 0)
@@ -127,6 +148,7 @@
        (setf (aref (gbcart-ram cart) (logand addr #x1ff)) val)))))
 
 (defun cart-mbc3-read (cart addr)
+  "CART memory reads for mbc3 type cartridges. reads the memory at ADDR based on which banks are selected."
   (case (logand addr #xf000)
     ((#x0000 #x1000 #x2000 #x3000)
       (aref (gbcart-rom cart) (logand addr #x3fff)))
@@ -142,6 +164,8 @@
        #xff))))
 
 (defun cart-mbc3-write (cart addr val)
+  "CART memory writes for mbc3 cartridges. writes at ADDR with VAL will modify ram values or update
+  various mbc flags"
   (case (logand addr #xf000)
     ((#x0000 #x1000)
      (setf (gbcart-ramon cart) (= (logand val #xf) #x0a)))
