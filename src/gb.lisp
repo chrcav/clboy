@@ -346,6 +346,9 @@
 (defconstant +cycles-per-frame+ (+ (floor +cpu-speed+ 60) 16))
 (defconstant +time-units-per-frame+ (truncate (* (/ 60) internal-time-units-per-second)))
 
+(defparameter *ppu-time* (make-profiler))
+(defparameter *spu-time* (make-profiler))
+
 (defun emu-main (gb)
   "Main loop for CL-Boy Game Boy emulator. handles setting up the window, controllers, and audio
   device. Loops through instructions and delegates to each component based on the clock cycles of
@@ -392,8 +395,8 @@
                     (loop while (step-cpu cpu gb)
                           for cyc = 0 then (+ cyc (gbcpu-clock cpu))
                           while (< cyc +cycles-per-frame+) do
-                    (step-ppu ppu gb)
-                    (step-spu spu (gbcpu-clock cpu))
+                    (prof-time-operation *ppu-time* (step-ppu ppu gb))
+                    (prof-time-operation *spu-time* (step-spu spu (gbcpu-clock cpu)))
                     (handle-timers cpu gb)
                     (handle-interrupts cpu gb))
                 (spu-queue-audio spu)

@@ -11,6 +11,7 @@
                          :components
                            ((:file "package")
                             (:file "utils")
+                            (:file "profile")
                             (:file "cpu")
                             (:file "opcodes")
                             (:file "ppu")
