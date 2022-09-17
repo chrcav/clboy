@@ -1,11 +1,12 @@
 
 
-
+(defpackage :clboy-test
+  (:use common-lisp clboy-test.opcodes try))
 
 (in-package clboy-test)
 
 (deftest test-all ()
-  (test-cpu))
+  (clboy-test.opcodes:test-cpu))
 
 
 (defun test (&key (debug nil) (print 'unexpected) (describe 'unexpected))

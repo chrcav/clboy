@@ -1,6 +1,7 @@
 
 (defpackage :clboy
-  (:use :common-lisp))
+  (:use :common-lisp)
+  (:export run load-cart dump-mem-region make-gbcart-from-rom))
 
 (in-package :clboy)
 

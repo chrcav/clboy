@@ -343,8 +343,8 @@
   "when T debug info is collected/printed")
 
 (defconstant +cycles-per-internal-time-units+ (floor +cpu-speed+ internal-time-units-per-second))
-(defconstant +cycles-per-frame+ (+ (floor +cpu-speed+ 60) 1))
-(defconstant +time-units-per-frame+ (* (/ 60) internal-time-units-per-second))
+(defconstant +cycles-per-frame+ (+ (floor +cpu-speed+ 60) 16))
+(defconstant +time-units-per-frame+ (truncate (* (/ 60) internal-time-units-per-second)))
 
 (defun emu-main (gb)
   "Main loop for CL-Boy Game Boy emulator. handles setting up the window, controllers, and audio
@@ -402,6 +402,12 @@
                 (sdl2:render-present renderer)
                 (let ((now (get-internal-real-time)))
                   (when (< (- now last-frame-time) +time-units-per-frame+)
+                    (format t "timeunits since last frame ~A, Sleeping for: ~A~%"
+                            (- now last-frame-time)
+                      (coerce (/ (- +time-units-per-frame+
+                            (- now last-frame-time))
+                         internal-time-units-per-second) 'float))
+
                     (sleep
                       (/ (- +time-units-per-frame+
                             (- now last-frame-time))
@@ -409,8 +415,6 @@
                   (setf last-frame-time now))))
             (:quit () t)))))))
 
-
-(defparameter *gb* (make-gb))
 
 (defun gb-reset (gb)
   "resets GB to start at the beginning of the bios with everything cleared"
@@ -421,62 +425,27 @@
         (gb-stopped? gb) nil)
   nil)
 
-(defun load-cart (cart)
+(defun load-cart (gb cart)
   "load CART into GB"
-  (gb-reset *gb*)
-  (setf (gb-cart *gb*) cart)
+  (gb-reset gb)
+  (setf (gb-cart gb) cart)
   nil)
-(defun unload-cart ()
+(defun unload-cart (gb)
   "unload CART into GB"
-  (gb-reset *gb*)
-  (setf (gb-cart *gb*) nil)
+  (gb-reset gb)
+  (setf (gb-cart gb) nil)
   nil)
 
-(defun dump-mem-region (start end)
+(defun dump-mem-region (gb start end)
   "reads the region of memory from START to END inclusive as a list of bytes."
   (loop for a from start to end
-        collect (read-memory-at-addr *gb* a)))
+        collect (read-memory-at-addr gb a)))
 
-(defun dump-oam ()
+(defun dump-oam (gb)
   "reads the OAM as a list of bytes."
-  (dump-mem-region #xfe00 #xfea0))
+  (dump-mem-region gb #xfe00 #xfea0))
 
-(defun dump-blargg-output ()
-  "reads the blargg test rom memory region where output is stored as a list of bytes"
-  (dump-mem-region #x9800 #x9BFF))
-
-(defparameter *silver-cart*  (make-gbcart-from-rom "roms/silver.gbc"))
-
-(defparameter *red-cart* (make-gbcart-from-rom "roms/red.gb"))
-
-(defparameter *ffadv-cart*  (make-gbcart-from-rom "roms/ff-adv.gb"))
-
-(defparameter *kirby-cart* (make-gbcart-from-rom "./roms/kirbys-dl.gb"))
-
-(defparameter *drmario-cart* (make-gbcart-from-rom "./roms/dr_mario.gb"))
-
-(load-cart *red-cart*)
-
-;; test rom memory replace calls
-;(load-cart (make-gbcart-from-rom "./opus4.gb"))
-;(load-cart (make-gbcart-from-rom "~/repos/github/retrio/gb-test-roms/instr_timing/instr_timing.gb")) ; PASSED
-;(load-cart (make-gbcart-from-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/cpu_instrs.gb")) ; PASSED
-;(load-cart (make-gbcart-from-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/01-special.gb")) ; PASSED
-;(load-cart (make-gbcart-from-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/02-interrupts.gb")) ; PASSED
-;(load-cart (make-gbcart-from-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/03-op sp,hl.gb")) ; PASSED
-;(load-cart (make-gbcart-from-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/04-op r,imm.gb")) ; PASSED
-;(load-cart (make-gbcart-from-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/05-op rp.gb")) ; PASSED
-;(load-cart (make-gbcart-from-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/06-ld r,r.gb")) ; PASSED
-;(load-cart (make-gbcart-from-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/07-jr,jp,call,ret,rst.gb")) ; PASSED
-;(load-cart (make-gbcart-from-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/08-misc instrs.gb")) ; PASSED
-;(load-cart (make-gbcart-from-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/09-op r,r.gb")) ; PASSED
-;(load-cart (make-gbcart-from-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/10-bit ops.gb")) ; PASSED
-;(load-cart (make-gbcart-from-rom "~/repos/github/retrio/gb-test-roms/cpu_instrs/individual/11-op a,(hl).gb")) ; PASSED
-
-;(load-cart (make-gbcart-from-rom "./mts-20220522-1522-55c535c/emulator-only/mbc1/multicart_rom_8Mb.gb"))
-
-
-(defun run ()
-  "runs the main loop with the global *GB*"
-  (emu-main *gb*))
+(defun run (gb)
+  "runs the main loop with the global GB"
+  (emu-main gb))
 

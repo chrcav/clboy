@@ -8,7 +8,7 @@
 (defun read-memory-at-addr (gb addr)
   (aref *memory* addr))
 
-(defpackage :clboy-test
+(defpackage :clboy-test.opcodes
   (:use :common-lisp :clboy :try)
   (:import-from :clboy
                 #:gbcpu-pc
@@ -51,7 +51,7 @@
                 #:peek-addr-from-stack)
   (:export #:test-cpu))
 
-(in-package :clboy-test)
+(in-package :clboy-test.opcodes)
 
 
 (deftest test-cpu ()

@@ -3,7 +3,7 @@
 (in-package :clboy)
 
 (defconstant +sample-rate+ 44100)
-(defconstant +audio-buffer-size+ 64)
+(defconstant +audio-buffer-size+ 1024)
 (defconstant +cycles-per-sample+ (floor +cpu-speed+ +sample-rate+))
 (defconstant +cycles-frame-seq-step+ (floor +cpu-speed+ 512))
 (defconstant +audio-normalize-factor+ 0.1)

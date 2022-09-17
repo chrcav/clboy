@@ -29,4 +29,5 @@
                          :serial t
                          :components
                          ((:file "opcodes")
+                          (:file "gb")
                           (:file "tests")))))
