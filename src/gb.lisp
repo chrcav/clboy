@@ -343,7 +343,7 @@
   "when T debug info is collected/printed")
 
 (defconstant +cycles-per-internal-time-units+ (floor +cpu-speed+ internal-time-units-per-second))
-(defconstant +cycles-per-frame+ (+ (floor +cpu-speed+ 60) 16))
+(defconstant +cycles-per-frame+ (floor +cpu-speed+ 60))
 (defconstant +time-units-per-frame+ (truncate (* (/ 60) internal-time-units-per-second)))
 
 (defparameter *ppu-time* (make-profiler))
@@ -371,9 +371,10 @@
                           (sdl2:game-controller-name-for-index c))
                   (sdl2:game-controller-open c)))
           (sdl2::unpause-audio-device audio-device)
-          (setf (gbppu-renderer (gb-ppu gb)) renderer)
-          (setf (gbppu-texture (gb-ppu gb)) texture)
-          (setf (gbspu-device (gb-spu gb)) audio-device)
+          (setf (gbppu-renderer (gb-ppu gb)) renderer
+                (gbppu-render-rect (gb-ppu gb)) rect
+                (gbppu-texture (gb-ppu gb)) texture
+                (gbspu-device (gb-spu gb)) audio-device)
           (sdl2:with-event-loop (:method :poll)
             (:keydown (:keysym keysym)
                       (handle-keydown (gb-input gb) gb keysym))
@@ -395,14 +396,11 @@
                     (loop while (step-cpu cpu gb)
                           for cyc = 0 then (+ cyc (gbcpu-clock cpu))
                           while (< cyc +cycles-per-frame+) do
-                    (prof-time-operation *ppu-time* (step-ppu ppu gb))
-                    (prof-time-operation *spu-time* (step-spu spu (gbcpu-clock cpu)))
+                    (step-ppu ppu gb)
+                    (step-spu spu (gbcpu-clock cpu))
                     (handle-timers cpu gb)
-                    (handle-interrupts cpu gb))
-                (spu-queue-audio spu)
-                (sdl2:render-clear renderer)
-                (sdl2:render-copy renderer texture :dest-rect rect)))
-                (sdl2:render-present renderer)
+                    (handle-interrupts cpu gb)))
+                (spu-queue-audio spu))
                 (let ((now (get-internal-real-time)))
                   (when (< (- now last-frame-time) +time-units-per-frame+)
                     (format t "timeunits since last frame ~A, Sleeping for: ~A~%"
@@ -410,7 +408,6 @@
                       (coerce (/ (- +time-units-per-frame+
                             (- now last-frame-time))
                          internal-time-units-per-second) 'float))
-
                     (sleep
                       (/ (- +time-units-per-frame+
                             (- now last-frame-time))
