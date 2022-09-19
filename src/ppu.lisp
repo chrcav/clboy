@@ -47,6 +47,7 @@
   (wx 0)
   (mode 0)
   (renderer nil)
+  (render-rect nil)
   (texture nil)
   (do-dma 0 :type (unsigned-byte 8))
   (lcdc (make-ppulcdc))
@@ -228,7 +229,11 @@
         (setf (aref (gbppu-bg-buffer ppu) (+ (* row framebuffer-width) col)) colorval)
         (let ((palette-col (logand (ash palette (* colorval -2)) 3)))
           (replace framebuffer (aref +colors+ palette-col)
-                   :start1 (+ (* row framebuffer-width 3) (* col 3)))))))))
+                   :start1 (+ (* row framebuffer-width 3) (* col 3)))
+          ;(setf (aref framebuffer (+ (* row framebuffer-width 3) (* col 3))) (car (aref +colors+ palette-col)))
+          ;(setf (aref framebuffer (+ (* row framebuffer-width 3) (* col 3) 1)) (cadr (aref +colors+ palette-col)))
+          ;(setf (aref framebuffer (+ (* row framebuffer-width 3) (* col 3) 2)) (caddr (aref +colors+ palette-col)))
+          ))))))
 
 (defun add-window-to-ppu-framebuffer (ppu)
   "adds a row of pixels from the visible portion of the window corresponding to the scanline
@@ -346,14 +351,15 @@
     (sdl2:render-copy (gbppu-renderer ppu) texture)
     (sdl2:render-present (gbppu-renderer ppu))))
 
-(defun update-screen (ppu gb texture)
+(defun update-screen (ppu renderer texture rect)
   "takes the current framebuffer and copies it into the TEXTURE"
-  (set-interrupt-flag gb 0)
   (sdl2:update-texture
     texture
     (cffi:null-pointer)
-    (static-vectors:static-vector-pointer
-      (gbppu-framebuffer ppu)) (* +screen-pixel-width+ 3)))
+    (static-vectors:static-vector-pointer (gbppu-framebuffer ppu)) (* +screen-pixel-width+ *scale*))
+  (sdl2:render-clear renderer)
+  (sdl2:render-copy renderer texture :dest-rect rect)
+  (sdl2:render-present renderer))
 
 (defun step-ppu (ppu gb)
   "handles updating the PPU mode and drawing to a texture when the defined number of cycles have
@@ -372,7 +378,9 @@
            (incf (gbppu-cur-line ppu))
            (if (> (gbppu-cur-line ppu) (- +screen-pixel-height+ 1))
              (progn (ppu-mode-transition ppu gb 1)
-                    (update-screen ppu gb (gbppu-texture ppu)))
+                    (set-interrupt-flag gb 0)
+                    (update-screen ppu (gbppu-renderer ppu) (gbppu-texture ppu) (gbppu-render-rect ppu))
+                    )
              (ppu-mode-transition ppu gb 2))))
       ; in Vblank state
       (1 (when (> (gbppu-cycles ppu) +vblank-duration-dots+)
