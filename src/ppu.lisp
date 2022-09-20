@@ -263,8 +263,8 @@
   "adds a row of pixels from the visible portion of the background corresponding to the scanline
   location."
   (when (< (gbppu-cur-line ppu) +screen-pixel-height+)
-    (loop for col = 0 then (+ col (- 8 (mod xoffset 8)))
-          for xoffset = (+ col (gbppu-scx ppu))
+    (loop for xoffset = (gbppu-scx ppu) then (+ xoffset 8)
+          for col = (- (mod (gbppu-scx ppu) 8)) then (+ col 8)
           while (< col +screen-pixel-width+) do
       (let* ((yoffset (+ (gbppu-cur-line ppu) (gbppu-scy ppu)))
              (addr (+ (ppulcdc-bg-tilemap-area (gbppu-lcdc ppu))
