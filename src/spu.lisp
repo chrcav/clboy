@@ -11,7 +11,7 @@
 (defstruct gbspu
   "struct for SPU GameBoy hardware. 4 channel audio, 2 square waves, 1 wave sequencer, and
   1 noise channel."
-  (ch1 (make-channel))
+  (ch1 (make-channel :has-sweep? t))
   (ch2 (make-channel))
   (ch3 (make-channel))
   (ch4 (make-channel))
@@ -41,10 +41,13 @@
   (vol 0)
   (env-tick 0)
   (sweep-period 0)
+  (sweep-ena? nil)
+  (has-sweep? nil)
   (right-output t)
   (left-output t)
   (cur-bit 0)
   (cur-addr 0)
+  (shadow-freq 0)
   (lfsr 0 :type (unsigned-byte 15))
   (ena? nil :type boolean)
   (dac-ena? t :type boolean))
@@ -117,11 +120,11 @@
     (#xff11 (set-channel-r1 (gbspu-ch1 spu) val))
     (#xff12 (set-channel-r2 (gbspu-ch1 spu) val))
     (#xff13 (set-channel-r3 (gbspu-ch1 spu) val))
-    (#xff14 (set-channel-r4 (gbspu-ch1 spu) val))
+    (#xff14 (set-square-channel-r4 (gbspu-ch1 spu) val))
     (#xff16 (set-channel-r1 (gbspu-ch2 spu) val))
     (#xff17 (set-channel-r2 (gbspu-ch2 spu) val))
     (#xff18 (set-channel-r3 (gbspu-ch2 spu) val))
-    (#xff19 (set-channel-r4 (gbspu-ch2 spu) val))
+    (#xff19 (set-square-channel-r4 (gbspu-ch2 spu) val))
     (#xff1a (set-wave-channel-r0 (gbspu-ch3 spu) val))
     (#xff1b (set-wave-channel-r1 (gbspu-ch3 spu) val))
     (#xff1c (set-wave-channel-r2 (gbspu-ch3 spu) val))
@@ -130,7 +133,7 @@
     (#xff20 (set-channel-r1 (gbspu-ch4 spu) val))
     (#xff21 (set-channel-r2 (gbspu-ch4 spu) val))
     (#xff22 (set-channel-r3 (gbspu-ch4 spu) val))
-    (#xff23 (set-channel-r4 (gbspu-ch4 spu) val))
+    (#xff23 (set-noise-channel-r4 (gbspu-ch4 spu) val))
     (otherwise ())))
 
 (defun set-wave-channel-r0 (channel val)
@@ -150,7 +153,9 @@
 
 (defun set-wave-channel-r4 (channel val)
     (setf (channel-r4 channel) val)
-    (if (> val #x7f) (setf (channel-ena? channel) t))
+    (when (> val #x7f)
+      (setf (channel-ena? channel) t
+            (channel-timer channel) (* (channel-freq channel) 2)))
     (when (= (logand val #x40) #x40)
       (setf (channel-len channel) (channel-r1 channel))))
 
@@ -175,19 +180,33 @@
 (defun set-channel-r3 (channel val)
   (setf (channel-r3 channel) val))
 
+(defun set-noise-channel-r4 (channel val)
+    (setf (channel-r4 channel) val)
+    (when (> val #x7f)
+      (setf (channel-timer channel) (* (channel-freq channel) 4)
+            (channel-lfsr channel) #xff)
+      (set-channel-r4 channel val)))
+(defun set-square-channel-r4 (channel val)
+    (setf (channel-r4 channel) val)
+    (when (> val #x7f)
+      (setf (channel-timer channel) (* (channel-freq channel) 4))
+      (set-channel-r4 channel val)
+      (channel-sweep-trigger channel)))
 (defun set-channel-r4 (channel val)
     (setf (channel-r4 channel) val)
     (when (> val #x7f)
       (setf (channel-ena? channel) t
-            (channel-timer channel) 0
             (channel-vol channel) (logand (ash (channel-r2 channel) -4) #xf)
             (channel-env-tick channel) (logand (channel-r2 channel) #x7)
-            (channel-lfsr channel) #xff
-            (channel-len channel) (logand (channel-r1 channel) #x1f))
-      (channel-sweep-trigger channel)))
+            (channel-len channel) (logand (channel-r1 channel) #x1f))))
 
 (defun channel-sweep-trigger (channel)
-  (step-channel-sweep channel))
+  (when (channel-has-sweep? channel)
+    (setf (channel-shadow-freq channel) (channel-freq channel))
+    (setf (channel-sweep-period channel) (logand (ash (channel-r0 channel) -4) #x7))
+    (if (= (channel-sweep-period channel) 0) (setf (channel-sweep-period channel) 8))
+    (setf (channel-sweep-ena? channel) (> (logand (channel-r0 channel) #xf7) 0))
+    (sweep-freq-calc channel)))
 
 (defun read-sound-vol (spu)
   (+ (ash (gbspu-left-vol spu) 4)
@@ -265,12 +284,12 @@
       (logand (logior new-lfsr (ash xor-res 6)) #x7f)
       new-lfsr)))
 
-(defun step-sqare-channel (channel spu)
+(defun step-square-channel (channel spu)
   "step the square wave CHANNEL based on the frame sequencer"
   (when (channel-ena? channel)
-      (when (and (= (logand (gbspu-frame-sequencer spu) #x3) #x2)
-                 (or (> (logand (channel-r0 channel) #x7) 0)
-                     (> (logand (ash (channel-r0 channel) -4) #x7) 0)))
+      (when (and (channel-has-sweep? channel)
+                 (= (logand (gbspu-frame-sequencer spu) #x3) #x2)
+                 (channel-sweep-ena? channel))
         (step-channel-sweep channel))
 
 
@@ -369,16 +388,33 @@
 
 (defun step-channel-sweep (channel)
     (decf (channel-sweep-period channel))
-    (when (<= (channel-sweep-period channel) 0)
+    (when (= (channel-sweep-period channel) 0)
       (setf (channel-sweep-period channel) (logand (ash (channel-r0 channel) -4) #x7))
-      (if (= (channel-sweep-period channel) 0) (setf (channel-sweep-period channel) 8))
-      (when (> (logand (channel-r0 channel) #x7) 0)
-        (let* ((channel-sweep (logand (channel-r0 channel) #x7))
-               (cur-freq (channel-freq channel))
-               (new-freq (funcall
-                           (if (= (logand (channel-r0 channel) #x8) #x8) #'- #'+)
-                           cur-freq (ash cur-freq (- channel-sweep)))))
-               (if (< new-freq 2048) (set-channel-freq channel new-freq) (setf (channel-ena? channel) nil))))))
+      ;(if (= (channel-sweep-period channel) 0) (setf (channel-sweep-period channel) 8))
+      (when (> (channel-sweep-period channel) 0)
+      (when (channel-sweep-ena? channel)
+        (let ((new-freq (sweep-freq-calc channel)))
+          (when (and (< new-freq 2048) (> (logand (channel-r0 channel) #x7) 0))
+            (setf (channel-shadow-freq channel) new-freq)
+            (set-channel-freq channel new-freq)
+            (sweep-freq-calc channel)))))))
+
+(defun sweep-freq-calc (channel)
+  (let* ((channel-sweep (logand (channel-r0 channel) #x7))
+         (cur-freq (channel-shadow-freq channel))
+         (new-freq (funcall
+                     (if (= (logand (channel-r0 channel) #x8) #x8) #'- #'+)
+                     cur-freq (ash cur-freq (- channel-sweep)))))
+    (if (> channel-sweep 0)
+      (format t "~A ~A ~A >> ~A = ~A~%"
+              cur-freq
+              (if (= (logand (channel-r0 channel) #x8) #x8) '- '+)
+              cur-freq
+              channel-sweep
+              new-freq))
+    (if (>= new-freq 2048) (setf (channel-sweep-ena? channel) nil
+                                 (channel-ena? channel) nil))
+    new-freq))
 
 (defun spu-queue-audio (spu)
   "queue data from the buffer into the SDL2 audio device"
@@ -401,8 +437,8 @@
     (when (<= (gbspu-frame-sequencer-delay spu) 0)
       (setf (gbspu-frame-sequencer spu) (mod (+ (gbspu-frame-sequencer spu) 1) 8))
       (incf (gbspu-frame-sequencer-delay spu) +cycles-frame-seq-step+)
-      (step-sqare-channel (gbspu-ch1 spu) spu)
-      (step-sqare-channel (gbspu-ch2 spu) spu)
+      (step-square-channel (gbspu-ch1 spu) spu)
+      (step-square-channel (gbspu-ch2 spu) spu)
       (step-wave-channel (gbspu-ch3 spu) spu)
       (step-noise-channel (gbspu-ch4 spu) spu))
     (decf (gbspu-delay spu) cycles)
