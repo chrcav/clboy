@@ -401,6 +401,7 @@
                     (handle-timers cpu gb)
                     (handle-interrupts cpu gb)))
                 (spu-queue-audio spu))
+                (step-rtc (gbcart-timer (gb-cart gb)))
                 (let ((now (get-internal-real-time)))
                   (when (< (- now last-frame-time) +time-units-per-frame+)
                     (format t "timeunits since last frame ~A, Sleeping for: ~A~%"

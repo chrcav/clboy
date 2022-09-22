@@ -15,8 +15,20 @@
   (rammask 1)
   (rambank 0)
   (timerbank 0)
+  (timer (make-rtc))
   (timers (make-array 5 :initial-element 0 :element-type '(unsigned-byte 8)))
   (mode 0))
+
+(defstruct rtc
+  (latched? nil :type boolean)
+  (latch-reg #xff :type (unsigned-byte 8))
+  (secs 0)
+  (mins 0)
+  (hours 0)
+  (days 0)
+  (halt? nil :type boolean)
+  (carry 0)
+  (last-tick (get-internal-real-time)))
 
 
 (defun make-gbcart-from-rom (filename)
@@ -159,7 +171,7 @@
          (if (>= (gbcart-rambank cart) 0)
            (aref (gbcart-ram cart) (+ (* (gbcart-rambank cart) #x2000) (logand addr #x1fff)))
          (if (>= (gbcart-timerbank cart) 0)
-           (aref (gbcart-timers cart) (logand (gbcart-timerbank cart) #x7))
+           (rtc-read (gbcart-timer cart) (gbcart-timerbank cart))
            #xff))
        #xff))))
 
@@ -173,18 +185,70 @@
      (let* ((rombank (logand (if (> val 1) val 1) (gbcart-rommask cart))))
        (setf (gbcart-rombank cart) rombank)))
     ((#x4000 #x5000)
-     (let ((rambank (logand (logand (ash val -5) #x03) (gbcart-rammask cart))))
-       (if (= (logand rambank #x8) #x0)
-       (setf (gbcart-rambank cart) rambank
-             (gbcart-timerbank cart) -1)
-       (setf (gbcart-timerbank cart) rambank
-             (gbcart-rambank cart) -1))))
-    ((#x6000 #x7000) ; TODO latch clock data
-     ())
+     (if (= (logand val #x8) #x0)
+     (setf (gbcart-rambank cart) (logand (logand (ash val -5) #x03) (gbcart-rammask cart))
+           (gbcart-timerbank cart) -1)
+     (setf (gbcart-timerbank cart) (logand val #x7)
+           (gbcart-rambank cart) -1)))
+    ((#x6000 #x7000)
+     (write-timer-latch (gbcart-timer cart) val))
     ((#xa000 #xb000)
      (when (gbcart-ramon cart)
        (when (>= (gbcart-rambank cart) 0)
          (setf (aref (gbcart-ram cart) (+ (* (gbcart-rambank cart) #x2000) (logand addr #x1fff))) val))
        (when (>= (gbcart-timerbank cart) 0) ; TODO need to understand how the timers function
-         (setf (aref (gbcart-timers cart) (logand (gbcart-timerbank cart) #x7)) val))))))
+         (rtc-write (gbcart-timer cart) (gbcart-timerbank cart) val))))))
 
+(defun rtc-write (rtc timerbank val)
+  (case timerbank
+    (#x0 (setf (rtc-secs rtc) (mod val 60)))
+    (#x1 (setf (rtc-mins rtc) (mod val 60)))
+    (#x2 (setf (rtc-hours rtc) (mod val 24)))
+    (#x3 (setf (rtc-days rtc) (logior (logand (rtc-days rtc) #x100) (logand val #xff))))
+    (#x4
+      (if (= (logand val #x40) #x40)
+        (setf (rtc-halt? rtc) t)
+        (setf (rtc-halt? rtc) nil
+              (rtc-last-tick rtc) (get-internal-real-time)))
+      (setf (rtc-days rtc) (logior (logand (rtc-days rtc) #xff) (ash (logand val #x1) 8)))
+      (setf (rtc-carry rtc) (ash val -7)))
+    (otherwise ())))
+
+(defun rtc-read (rtc timerbank)
+  (logand #xff
+          (case timerbank
+            (#x0 (rtc-secs rtc))
+            (#x1 (rtc-mins rtc))
+            (#x2 (rtc-hours rtc))
+            (#x3 (rtc-days rtc))
+            (#x4
+              (logior (ash (rtc-days rtc) -8)
+                      (ash (clboy-utils:bool-as-bit (rtc-halt? rtc)) 6)
+                      (ash (rtc-carry rtc) 7)))
+            (otherwise #xff))))
+
+(defun write-timer-latch (rtc val)
+   (if (and (= (rtc-latch-reg rtc) 0) (= val 1))
+     (setf (rtc-latched? rtc) (not (rtc-latched? rtc))))
+   (setf (rtc-latch-reg rtc) val))
+
+(defun reset-timer (rtc)
+  (make-rtc :halt? (rtc-halt? rtc)))
+
+(defun step-rtc (rtc)
+  (when (and (not (rtc-halt? rtc)) (not (rtc-latched? rtc)))
+    (when (>= (- (get-internal-real-time) (rtc-last-tick rtc)) internal-time-units-per-second)
+      (loop for i from 1 to (floor (- (get-internal-real-time) (rtc-last-tick rtc)) internal-time-units-per-second)
+            do (tick-rtc rtc))
+      (setf (rtc-last-tick rtc) (get-internal-real-time)))))
+
+(defun tick-rtc (rtc)
+  (when (>= (incf (rtc-secs rtc)) 60)
+    (decf (rtc-secs rtc) 60)
+    (when (>= (incf (rtc-mins rtc)) 60)
+      (decf (rtc-mins rtc) 60)
+      (when (>= (incf (rtc-hours rtc)) 24)
+        (decf (rtc-hours rtc) 24)
+        (when (>= (incf (rtc-days rtc)) #x1ff)
+          (decf (rtc-days rtc) #x1ff)
+          (setf (rtc-carry rtc) 1))))))
