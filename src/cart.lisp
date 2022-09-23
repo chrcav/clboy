@@ -9,6 +9,7 @@
   (ram (make-array #x2000 :initial-element 0 :element-type '(unsigned-byte 8)))
   (filename nil)
   (carttype 0)
+  (cgb 0)
   (ramon nil :type boolean)
   (rombank 1)
   (rommask 1)
@@ -38,7 +39,16 @@
     (get-carttype-from-rom cart)
     (get-rommask-from-rom cart)
     (get-ramsize-from-rom cart)
+    (initialize-ram-from-file cart (concatenate 'string filename ".ram"))
+    (get-cgb cart)
     cart))
+
+(defun cart-ram-filename (cart)
+  (concatenate 'string (gbcart-filename cart) ".ram"))
+
+(defun initialize-ram-from-file (cart file)
+  (let ((ram (read-rom-data-from-file file)))
+    (replace (gbcart-ram cart) ram)))
 
 (defun replace-memory-with-rom (cart file)
   "given a GBCART CART replace rom with FILE contents"
@@ -64,6 +74,9 @@
                    (#x05 8))))
     (if (> rambanks 0) (setf (gbcart-ram cart) (make-array (* rambanks #x2000) :element-type '(unsigned-byte 8))))
     (setf (gbcart-rammask cart) (- rambanks 1))))
+
+(defun get-cgb (cart)
+  (setf (gbcart-cgb cart) (cart-read-memory-at-addr cart #x143)))
 
 (defun cart-read-memory-at-addr (cart addr)
   "Route memory reads from mmu to CART memory at ADDR. Memory can be ROM, RAM, or other cart data

@@ -172,8 +172,17 @@
 
 (defun read-rom-data-from-file (filename)
   "reads rom data from a file referenced by FILENAME as a list of bytes"
-  (with-open-file (bin filename :element-type '(unsigned-byte 8))
-    (loop for b = (read-byte bin nil) while b collect b)))
+  (with-open-file (bin filename :element-type '(unsigned-byte 8) :if-does-not-exist nil)
+    (if bin (loop for b = (read-byte bin nil) while b collect b))))
+
+(defun write-cart-ram-to-file (cart filename)
+  "writes the contents of CART ram to file referenced by FILENAME"
+  (with-open-file (bin filename
+                       :element-type '(unsigned-byte 8)
+                       :direction :output
+                       :if-does-not-exist :create
+                       :if-exists :supersede)
+    (write-sequence (gbcart-ram cart) bin)))
 
 (defun make-signed-from-unsigned (unsign-byte)
   "convert a unsigned byte to a signed byte"
@@ -416,7 +425,9 @@
                             (- now last-frame-time))
                          internal-time-units-per-second)))
                   (setf last-frame-time now))))
-            (:quit () t)))))))
+            (:quit ()
+                   (write-cart-ram-to-file (gb-cart gb) (cart-ram-filename (gb-cart gb)))
+                   t)))))))
 
 
 (defun gb-reset (gb)
