@@ -69,15 +69,16 @@
   "Route memory reads from mmu to CART memory at ADDR. Memory can be ROM, RAM, or other cart data
   based on address and mbc flags"
   (case (gbcart-carttype cart)
-       ((#x1 #x2 #x3) (cart-mbc1-read cart addr))
-       ((#x5 #x6) (cart-mbc2-read cart addr))
-       ((#xf #x10 #x11 #x12 #x13) (cart-mbc3-read cart addr))
-       (otherwise
-         (case (logand addr #xf000)
-           ((#x0000 #x1000 #x2000 #x3000 #x4000 #x5000 #x6000 #x7000)
-            (aref (gbcart-rom cart) addr))
-           ((#xa000 #xb000)
-            (aref (gbcart-ram cart) addr))))))
+    ((#x1 #x2 #x3) (cart-mbc1-read cart addr))
+    ((#x5 #x6) (cart-mbc2-read cart addr))
+    ((#xf #x10 #x11 #x12 #x13) (cart-mbc3-read cart addr))
+    ((#x19 #x1a #x1b #x1c #x1d #x1e) (cart-mbc5-read cart addr))
+    (otherwise
+      (case (logand addr #xf000)
+        ((#x0000 #x1000 #x2000 #x3000 #x4000 #x5000 #x6000 #x7000)
+         (aref (gbcart-rom cart) addr))
+        ((#xa000 #xb000)
+         (aref (gbcart-ram cart) addr))))))
 
 (defun cart-write-memory-at-addr (cart addr val)
   "Route memory writes from mmu to CART memory at ADDR. Memory can be ROM, RAM, or other cart data
@@ -86,6 +87,7 @@
     ((#x1 #x2 #x3) (cart-mbc1-write cart addr val))
     ((#x5 #x6) (cart-mbc2-write cart addr val))
     ((#xf #x10 #x11 #x12 #x13) (cart-mbc3-write cart addr val))
+    ((#x19 #x1a #x1b #x1c #x1d #x1e) (cart-mbc5-write cart addr val))
     (otherwise
       (case (logand addr #xf000)
         ((#xa000 #xb000)
@@ -198,6 +200,39 @@
          (setf (aref (gbcart-ram cart) (+ (* (gbcart-rambank cart) #x2000) (logand addr #x1fff))) val))
        (when (>= (gbcart-timerbank cart) 0) ; TODO need to understand how the timers function
          (rtc-write (gbcart-timer cart) (gbcart-timerbank cart) val))))))
+
+(defun cart-mbc5-read (cart addr)
+  "CART memory reads for mbc5 type cartridges. reads the memory at ADDR based on which banks are selected."
+  (case (logand addr #xf000)
+    ((#x0000 #x1000 #x2000 #x3000)
+      (aref (gbcart-rom cart) (logand addr #x3fff)))
+    ((#x4000 #x5000 #x6000 #x7000)
+      (aref (gbcart-rom cart) (+ (* (gbcart-rombank cart) #x4000) (logand addr #x3fff))))
+    ((#xa000 #xb000)
+     (if (gbcart-ramon cart)
+         (if (>= (gbcart-rambank cart) 0)
+           (aref (gbcart-ram cart) (+ (* (gbcart-rambank cart) #x2000) (logand addr #x1fff)))
+           #xff)
+       #xff))))
+
+(defun cart-mbc5-write (cart addr val)
+  "CART memory writes for mbc5 cartridges. writes at ADDR with VAL will modify ram values or update
+  various mbc flags"
+  (case (logand addr #xf000)
+    ((#x0000 #x1000)
+     (setf (gbcart-ramon cart) (= (logand val #xf) #x0a)))
+    (#x2000
+     (let ((rombank (logand (logior (logand (gbcart-rommask cart) #x100) val) (gbcart-rommask cart))))
+       (setf (gbcart-rombank cart) rombank)))
+    (#x3000
+     (let ((rombank (logand (logior (logand (gbcart-rommask cart) #xff) (logand val #x1)) (gbcart-rommask cart))))
+       (setf (gbcart-rombank cart) rombank)))
+    ((#x4000 #x5000)
+     (setf (gbcart-rambank cart) (logand (logand (ash val -5) #x03) (gbcart-rammask cart))))
+    ((#xa000 #xb000)
+     (when (gbcart-ramon cart)
+       (when (>= (gbcart-rambank cart) 0)
+         (setf (aref (gbcart-ram cart) (+ (* (gbcart-rambank cart) #x2000) (logand addr #x1fff))) val))))))
 
 (defun rtc-write (rtc timerbank val)
   (case timerbank

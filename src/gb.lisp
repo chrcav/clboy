@@ -74,7 +74,9 @@
                (otherwise (aref (gb-zero-page gb) (logand addr #xff)))))
             ((#x10 #x20 #x30) (spu-read-memory-at-addr (gb-spu gb) addr))
             (#x40 (ppu-read-memory-at-addr (gb-ppu gb) addr))
-            (#x50 (if (= (logand addr #xff) #x50) (if (gb-is-bios? gb) #xff #x00)))
+            (#x50 (if (= (logand addr #xff) #x50)
+                    (if (gb-is-bios? gb) #xff #x00)
+                    #xff))
             (otherwise (aref (gb-zero-page gb) (logand addr #xff)))))))))
 
 (defun get-address-from-memory (gb addr)
