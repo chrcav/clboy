@@ -17,7 +17,8 @@
                             (:file "ppu")
                             (:file "spu")
                             (:file "cart")
-                            (:file "gb")))))
+                            (:file "gb"))))
+           :in-order-to ((test-op (test-op clboy/test))))
 
 (defsystem "clboy/test"
            :description "tests for clboy system"
@@ -30,5 +31,8 @@
                          :serial t
                          :components
                          ((:file "opcodes")
+                          (:file "cart")
                           (:file "gb")
-                          (:file "tests")))))
+                          (:file "tests"))))
+           :perform (test-op (o s)
+                      (uiop:symbol-call '#:clboy-test '#:test)))

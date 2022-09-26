@@ -6,7 +6,8 @@
 (in-package clboy-test)
 
 (deftest test-all ()
-  (clboy-test.opcodes:test-cpu))
+  (clboy-test.opcodes:test-cpu)
+  (clboy-test.cart:test-carts))
 
 
 (defun test (&key (debug nil) (print 'unexpected) (describe 'unexpected))

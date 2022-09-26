@@ -90,7 +90,7 @@
         ((#x0000 #x1000 #x2000 #x3000 #x4000 #x5000 #x6000 #x7000)
          (aref (gbcart-rom cart) addr))
         ((#xa000 #xb000)
-         (aref (gbcart-ram cart) addr))))))
+         (aref (gbcart-ram cart) (logand addr #x1fff)))))))
 
 (defun cart-write-memory-at-addr (cart addr val)
   "Route memory writes from mmu to CART memory at ADDR. Memory can be ROM, RAM, or other cart data
@@ -103,9 +103,7 @@
     (otherwise
       (case (logand addr #xf000)
         ((#xa000 #xb000)
-         (setf (aref (gbcart-ram cart)
-                     (+ (* (gbcart-rambank cart) #x2000) (logand addr #x1fff)))
-               val))))))
+         (setf (aref (gbcart-ram cart) (logand addr #x1fff)) val))))))
 
 (defun cart-mbc1-read (cart addr)
   "CART memory reads for mbc1 type cartridges. reads the memory at ADDR based on which banks are selected."
