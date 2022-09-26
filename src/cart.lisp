@@ -42,6 +42,18 @@
     (get-cgb cart)
     cart))
 
+(defun cart-write-ram-to-file (cart filename)
+  "writes the contents of CART ram to file referenced by FILENAME only if carttype has battery"
+  (case (gbcart-carttype cart)
+    ((#x03 #x06 #x09 #x0d #x0f #x10
+      #x13 #x1b #x1e #x22 #xff)
+     (with-open-file (bin filename
+                       :element-type '(unsigned-byte 8)
+                       :direction :output
+                       :if-does-not-exist :create
+                       :if-exists :supersede)
+     (write-sequence (gbcart-ram cart) bin)))))
+
 (defun cart-ram-filename (cart)
   (concatenate 'string (gbcart-filename cart) ".ram"))
 

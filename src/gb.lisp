@@ -175,15 +175,6 @@
   (with-open-file (bin filename :element-type '(unsigned-byte 8) :if-does-not-exist nil)
     (if bin (loop for b = (read-byte bin nil) while b collect b))))
 
-(defun write-cart-ram-to-file (cart filename)
-  "writes the contents of CART ram to file referenced by FILENAME"
-  (with-open-file (bin filename
-                       :element-type '(unsigned-byte 8)
-                       :direction :output
-                       :if-does-not-exist :create
-                       :if-exists :supersede)
-    (write-sequence (gbcart-ram cart) bin)))
-
 (defun make-signed-from-unsigned (unsign-byte)
   "convert a unsigned byte to a signed byte"
   (if (< unsign-byte 128)
@@ -426,7 +417,7 @@
                          internal-time-units-per-second)))
                   (setf last-frame-time now))))
             (:quit ()
-                   (write-cart-ram-to-file (gb-cart gb) (cart-ram-filename (gb-cart gb)))
+                   (cart-write-ram-to-file (gb-cart gb) (cart-ram-filename (gb-cart gb)))
                    t)))))))
 
 
