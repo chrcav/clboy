@@ -57,10 +57,7 @@
   (obj-palette1 0)
   (enabled? t :type boolean))
 
-(defconstant +colors+ #((255 255 255)
-                       (192 192 192)
-                       (96 96 96)
-                       (0  0  0)))
+(defparameter *colors* #((255 255 255) (192 192 192) (96 96 96) (0  0  0)))
 
 (defun gbppu-reset (ppu)
   "resets the PPU slots"
@@ -228,11 +225,12 @@
                          (= priority #x00) )))
         (setf (aref (gbppu-bg-buffer ppu) (+ (* row framebuffer-width) col)) colorval)
         (let ((palette-col (logand (ash palette (* colorval -2)) 3)))
-          (replace framebuffer (aref +colors+ palette-col)
+          (replace framebuffer (aref *colors* palette-col)
                    :start1 (+ (* row framebuffer-width 3) (* col 3)))
-          ;(setf (aref framebuffer (+ (* row framebuffer-width 3) (* col 3))) (car (aref +colors+ palette-col)))
-          ;(setf (aref framebuffer (+ (* row framebuffer-width 3) (* col 3) 1)) (cadr (aref +colors+ palette-col)))
-          ;(setf (aref framebuffer (+ (* row framebuffer-width 3) (* col 3) 2)) (caddr (aref +colors+ palette-col)))
+          ;(setf (aref framebuffer (+ (* row framebuffer-width 3) (* col 3))) (car (aref *colors* palette-col)))
+          ;(setf (aref framebuffer (+ (* row framebuffer-width 3) (* col 3) 1)) (cadr (aref *colors* palette-col)))
+          ;(setf (aref framebuffer (+ (* row framebuffer-width 3) (* col 3) 2)) (caddr (aref
+          ;*colors* palette-col)))
           ))))))
 
 (defun add-window-to-ppu-framebuffer (ppu)

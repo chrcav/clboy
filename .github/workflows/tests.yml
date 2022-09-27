@@ -1,0 +1,44 @@
+
+name: Tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: ${{ matrix.lisp }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        lisp: [sbcl]
+        os: [ubuntu-latest]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: install lisp
+        run: sudo apt-get install -y ${{ matrix.lisp }} libsdl2-dev
+
+      - name: install quicklisp
+        run: |
+          curl -O https://beta.quicklisp.org/quicklisp.lisp
+          ${{ matrix.lisp }} --non-interactive \
+               --eval "(load \"quicklisp.lisp\")" \
+               --eval "(quicklisp-quickstart:install)"
+          mkdir -p ~/quicklisp/local-projects/
+
+      - name: checkout cl-sdl2
+        run: git clone https://github.com/chrcav/cl-sdl2.git ~/quicklisp/local-projects/cl-sdl2
+
+      - name: Run clboy/test package
+        run: |
+          ln -sf $GITHUB_WORKSPACE ~/quicklisp/local-projects/clboy
+          ${{ matrix.lisp }} --non-interactive \
+               --eval "(load \"~/quicklisp/setup.lisp\")" \
+               --eval "(ql:quickload '(clboy clboy/test))" \
+               --eval "(unless (try:passedp (try:try 'clboy-test:test-all)) (uiop:quit 1))"

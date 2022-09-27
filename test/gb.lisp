@@ -16,16 +16,6 @@
   "reads the blargg test rom memory region where output is stored as a list of bytes"
   (clboy:dump-mem-region gb #x9800 #x9BFF))
 
-(defparameter *silver-cart*  (clboy:make-gbcart-from-rom "roms/silver.gbc"))
-
-(defparameter *red-cart* (clboy:make-gbcart-from-rom "roms/red.gb"))
-
-(defparameter *ffadv-cart*  (clboy:make-gbcart-from-rom "roms/ff-adv.gb"))
-
-(defparameter *kirby-cart* (clboy:make-gbcart-from-rom "./roms/kirbys-dl.gb"))
-
-(defparameter *drmario-cart* (clboy:make-gbcart-from-rom "./roms/dr_mario.gb"))
-
 ;; test rom memory replace calls
 (deftest test-roms ()
   (test-blargg-01-special))
