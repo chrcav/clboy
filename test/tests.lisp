@@ -1,7 +1,8 @@
 
 
 (defpackage :clboy-test
-  (:use common-lisp clboy-test.opcodes try))
+  (:use common-lisp clboy-test.opcodes try)
+  (:export #:test-all))
 
 (in-package clboy-test)
 
