@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: install lisp
-        run: sudo apt-get install -y ${{ matrix.lisp }}
+        run: sudo apt-get install -y ${{ matrix.lisp }} libsdl2
 
       - name: install quicklisp
         run: |
