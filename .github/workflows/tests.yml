@@ -15,16 +15,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        lisp: [sbcl-bin,sbcl,ccl,ccl32,ecl,clisp,allegro,cmucl,abcl]
-        os: [ubuntu-latest, arch-linux]
+        lisp: [sbcl]
+        os: [ubuntu-latest]
 
     steps:
       - uses: actions/checkout@v3
-  
-      - name: install roswell
-        env:
-          LISP: ${{ matrix.lisp }}
-        run: curl -L https://raw.githubusercontent.com/roswell/roswell/master/scripts/install-for-ci.sh | sh
+
+      - name: install lisp
+        run: apt install ${{ matrix.lisp }}
 
       - name: install quicklisp
         run: |
