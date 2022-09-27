@@ -39,6 +39,6 @@ jobs:
         run: |
           ln -sf $GITHUB_WORKSPACE ~/quicklisp/local-projects/clboy
           ${{ matrix.lisp }} --non-interactive \
-               --eval "(load \"quicklisp/setup.lisp\")" \
+               --eval "(load \"~/quicklisp/setup.lisp\")" \
                --eval "(ql:quickload '(clboy clboy/test))" \
                --eval "(unless (try:passedp (try:try 'clboy-test:test-all)) (uiop:quit 1))"
