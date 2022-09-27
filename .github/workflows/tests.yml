@@ -33,7 +33,7 @@ jobs:
           mkdir -p ~/quicklisp/local-projects/
 
       - name: checkout cl-sdl2
-        run: git clone https://github.com/chrcav/cl-sdl2.git ~/quicklisp/local-projects/
+        run: git clone https://github.com/chrcav/cl-sdl2.git ~/quicklisp/local-projects/cl-sdl2
 
       - name: Run a multi-line script
         run: |
