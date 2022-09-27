@@ -20,11 +20,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-      
+  
+      - name: install roswell
+        env:
+          LISP: ${{ matrix.lisp }}
+        run: curl -L https://raw.githubusercontent.com/roswell/roswell/master/scripts/install-for-ci.sh | sh
+
       - name: install quicklisp
         run: |
           curl -O https://beta.quicklisp.org/quicklisp.lisp
-          sbcl --non-interactive \
+          ${{ matrix.lisp }} --non-interactive \
                --eval "(load \"~/quicklisp.lisp\")" \
                --eval "(quicklisp-quickstart:install)"
           mkdir -p ~/quicklisp/local-projects/
@@ -35,7 +40,7 @@ jobs:
       - name: Run a multi-line script
         run: |
           ln -sf $GITHUB_WORKSPACE ~/quicklisp/local-projects/clboy
-          sbcl --non-interactive \
+          ${{ matrix.lisp }} --non-interactive \
                --eval "(load (merge-pathnames \"quicklisp/setup.lisp\" (user-homedir-pathname)))" \
                --eval "(ql:quickload '(clboy clboy/test))" \
                --eval "(unless (try:passedp (try:try 'clboy-test:test-all)) (uiop:quit 1))"
