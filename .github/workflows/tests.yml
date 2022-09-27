@@ -28,7 +28,7 @@ jobs:
         run: |
           curl -O https://beta.quicklisp.org/quicklisp.lisp
           ${{ matrix.lisp }} --non-interactive \
-               --eval "(load \"~/quicklisp.lisp\")" \
+               --eval "(load \"quicklisp.lisp\")" \
                --eval "(quicklisp-quickstart:install)"
           mkdir -p ~/quicklisp/local-projects/
 
@@ -39,6 +39,6 @@ jobs:
         run: |
           ln -sf $GITHUB_WORKSPACE ~/quicklisp/local-projects/clboy
           ${{ matrix.lisp }} --non-interactive \
-               --eval "(load (merge-pathnames \"quicklisp/setup.lisp\" (user-homedir-pathname)))" \
+               --eval "(load \"quicklisp/setup.lisp\")" \
                --eval "(ql:quickload '(clboy clboy/test))" \
                --eval "(unless (try:passedp (try:try 'clboy-test:test-all)) (uiop:quit 1))"
