@@ -35,7 +35,7 @@ jobs:
       - name: checkout cl-sdl2
         run: git clone https://github.com/chrcav/cl-sdl2.git ~/quicklisp/local-projects/cl-sdl2
 
-      - name: Run a multi-line script
+      - name: Run clboy/test package
         run: |
           ln -sf $GITHUB_WORKSPACE ~/quicklisp/local-projects/clboy
           ${{ matrix.lisp }} --non-interactive \
