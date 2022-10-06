@@ -366,7 +366,6 @@
                       (* +screen-pixel-width+ *scale*) (* +screen-pixel-height+ *scale*)))
               (audio-device (sdl2::open-audio-device +sample-rate+ :f32 2 1024))
               (last-frame-time (get-internal-real-time)))
-          (sdl2:game-controller-open 0)
           (loop for c from 0 to (- (sdl2:joystick-count) 1) do
                 (when (sdl2:game-controller-p c)
                   (format t "Found controller: ~a~%"
