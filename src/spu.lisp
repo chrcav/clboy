@@ -405,7 +405,7 @@
          (new-freq (funcall
                      (if (= (logand (channel-r0 channel) #x8) #x8) #'- #'+)
                      cur-freq (ash cur-freq (- channel-sweep)))))
-    (if (> channel-sweep 0)
+    (if (and *debug* (> channel-sweep 0))
       (format t "~A ~A ~A >> ~A = ~A~%"
               cur-freq
               (if (= (logand (channel-r0 channel) #x8) #x8) '- '+)

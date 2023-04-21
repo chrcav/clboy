@@ -404,7 +404,7 @@
                 (spu-queue-audio spu))
                 (step-rtc (gbcart-timer (gb-cart gb)))
                 (let ((now (get-internal-real-time)))
-                  (when (< (- now last-frame-time) +time-units-per-frame+)
+                  (when (and *debug* (< (- now last-frame-time) +time-units-per-frame+))
                     (format t "timeunits since last frame ~A, Sleeping for: ~A~%"
                             (- now last-frame-time)
                       (coerce (/ (- +time-units-per-frame+
