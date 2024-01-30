@@ -66,7 +66,8 @@
   (ocps-obpi #xff :type (unsigned-byte 8))
   (hdma12 #x0000 :type (unsigned-byte 16))
   (hdma34 #x0000 :type (unsigned-byte 16))
-  (hdma5 #xff :type (unsigned-byte 8)))
+  (hdma5 #xff :type (unsigned-byte 8))
+  (opri #x00 :type (unsigned-byte 8)))
 
 
 (defparameter *colors* #((255 255 255) (192 192 192) (96 96 96) (0  0  0)))
@@ -159,7 +160,7 @@
           (#x49 (setf (gbppu-obj-palette1 ppu) val))
           (#x4a (setf (gbppu-wy ppu) val))
           (#x4b (setf (gbppu-wx ppu) val))
-          ((#x4f #x51 #x52 #x53 #x54 #x55 #x68 #x69 #x6a #x6b)
+          ((#x4f #x51 #x52 #x53 #x54 #x55 #x68 #x69 #x6a #x6b #x6c)
            (if (cgbppu-p ppu)
                (case (logand addr #x00ff)
                  (#x4f (setf (gbppu-vram-bank ppu) (logand val #x01)))
@@ -173,7 +174,8 @@
                              (cgbppu-bcps-bgpi ppu) (if (> (cgbppu-bcps-bgpi ppu) #x7f) (+ (cgbppu-bcps-bgpi ppu) 1) (cgbppu-bcps-bgpi ppu))))
                  (#x6a (setf (cgbppu-ocps-obpi ppu) val))
                  (#x6b (setf (aref (cgbppu-obj-cram ppu) (logand (cgbppu-ocps-obpi ppu) #x3f)) val
-                             (cgbppu-ocps-obpi ppu) (if (> (cgbppu-ocps-obpi ppu) #x7f) (+ (cgbppu-ocps-obpi ppu) 1) (cgbppu-ocps-obpi ppu)))))))
+                             (cgbppu-ocps-obpi ppu) (if (> (cgbppu-ocps-obpi ppu) #x7f) (+ (cgbppu-ocps-obpi ppu) 1) (cgbppu-ocps-obpi ppu))))
+                 (#x6c (setf (cgbppu-opri ppu) val)))))
           (otherwise ())))))))
 
 (defun ppu-read-memory-at-addr (ppu addr)
@@ -201,7 +203,7 @@
           (#x4a (gbppu-wy ppu))
           (#x4b (gbppu-wx ppu))
           (#x4f (logior (gbppu-vram-bank ppu) #xef))
-          ((#x51 #x52 #x53 #x54 #x68 #x69 #x6a #x6b)
+          ((#x51 #x52 #x53 #x54 #x68 #x69 #x6a #x6b #x6c)
            (if (cgbppu-p ppu)
                (case (logand addr #x00ff)
                  (#x51 (logior (logand (cgbppu-hdma12 ppu) #x00ff) ))
@@ -212,7 +214,8 @@
                  (#x68 (cgbppu-bcps-bgpi ppu))
                  (#x69 (aref (cgbppu-bg-cram ppu) (cgbppu-bcps-bgpi ppu)))
                  (#x6a (cgbppu-ocps-obpi ppu))
-                 (#x6b (aref (cgbppu-obj-cram ppu) (cgbppu-ocps-obpi ppu))))))
+                 (#x6b (aref (cgbppu-obj-cram ppu) (cgbppu-ocps-obpi ppu)))
+                 (#x6c (cgbppu-opri ppu)))))
           (otherwise #xff)))))))
 
 (defun read-sprite (ppu addr)
