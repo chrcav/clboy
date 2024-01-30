@@ -48,9 +48,13 @@
           (#x40 (ppu-write-memory-at-addr (gb-ppu gb) addr val))
           (#x50
            (case (logand addr #x000f)
-             (#x0 (setf (gb-is-bios? gb) (= val 0)))))
+             (#x0 (setf (gb-is-bios? gb) (= val 0)))
+             ((#x1 #x2 #x3 #x4 #x5) (ppu-write-memory-at-addr (gb-ppu gb) addr val))))
           (#x60 (ppu-write-memory-at-addr (gb-ppu gb) addr val))
-          (#x70 (if (= addr #xff70) (if (gb-is-cgb? gb) (setf (gb-int-ram-bank gb) (if (> (logand val #x7) 0) (logand val #x7) 1)))))
+          (#x70
+           (case (logand addr #x000f)
+             (#x0 (if (cgb-p gb) (setf (gb-int-ram-bank gb) (if (> (logand val #x7) 0) (logand val #x7) 1))))
+             ((#x2 #x3 #x4 #x5) (ppu-write-memory-at-addr (gb-ppu gb) addr val))))
           (otherwise (setf (aref (gb-zero-page gb) (logand addr #xff)) val))))))))
 
 (defun read-memory-at-addr (gb addr)
@@ -84,10 +88,12 @@
             (#x40 (ppu-read-memory-at-addr (gb-ppu gb) addr))
             (#x50
               (case (logand addr #x000f)
-                (#x0 (if (gb-is-bios? gb) #xff (if (gb-is-cgb? gb) #x11 #xff)))
+                (#x0 (if (gb-is-bios? gb) #xff (if (cgb-p gb) #x11 #xff)))
+                ((#x1 #x2 #x3 #x4 #x5) (ppu-read-memory-at-addr (gb-ppu gb) addr))
                 (otherwise #xff)))
             (#x60 (ppu-read-memory-at-addr (gb-ppu gb) addr))
-            (#x70 (if (= addr #xff70) (if (gb-is-cgb? gb) (gb-int-ram-bank gb))))
+            (#x70
+             (if (= (logand addr #xff) #x70) (if (cgb-p gb) (gb-int-ram-bank gb))))
             (otherwise (aref (gb-zero-page gb) (logand addr #xff)))))))))
 
 (defun get-address-from-memory (gb addr)
@@ -632,19 +638,19 @@
   (gbspu-reset (gb-spu gb))
   (setf (gb-cpu gb) (make-gbcpu)
         (gb-is-bios? gb) t
+        (gb-int-ram-bank gb) 1
         (gb-stopped? gb) nil)
   nil)
 
 (defun load-cart (gb cart)
   "load CART into GB"
   (gb-reset gb)
-  (setf (gb-cart gb) cart
-        (gb-is-cgb? gb) (= (logand (gbcart-cgb cart) #x80) #x80)
-        (gbppu-is-cgb? (gb-ppu gb)) (= (logand (gbcart-cgb cart) #x80) #x80))
-  (if (gb-is-cgb? gb)
+  (setf (gb-cart gb) cart)
+  (if (cgb-p gb)
       (replace (gb-bios gb) *cgb-bios*)
       (replace (gb-bios gb) *dmg-bios*))
   nil)
+
 (defun unload-cart (gb)
   "unload CART into GB"
   (gb-reset gb)

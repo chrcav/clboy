@@ -18,7 +18,11 @@
   (paused? nil :type boolean)
   (bios (make-bios))
   (is-bios? t :type boolean)
-  (is-cgb? nil :type boolean)
   (int-ram (make-array #x8000 :initial-element 0 :element-type '(unsigned-byte 8)))
   (int-ram-bank 1 :type (unsigned-byte 8))
   (zero-page (make-array #x100 :initial-element 0 :element-type '(unsigned-byte 8))))
+
+(defstruct (cgb (:include gb
+                 (int-ram (make-array #x8000 :initial-element 0 :element-type '(unsigned-byte 8)))
+                 (ppu (make-cgbppu))))
+  "defines a GameBoy Color system")
