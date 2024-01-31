@@ -25,4 +25,6 @@
 (defstruct (cgb (:include gb
                  (int-ram (make-array #x8000 :initial-element 0 :element-type '(unsigned-byte 8)))
                  (ppu (make-cgbppu))))
-  "defines a GameBoy Color system")
+  "defines a GameBoy Color system"
+  (is-speed-armed? nil :type boolean)
+  (is-double-speed? nil :type boolean))

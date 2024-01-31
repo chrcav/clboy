@@ -45,11 +45,16 @@
              (#x0 (setf (gbinput-reg (gb-input gb)) val))
              (otherwise (setf (aref (gb-zero-page gb) (logand addr #xff)) val))))
           ((#x10 #x20 #x30) (spu-write-memory-at-addr (gb-spu gb) addr val))
-          (#x40 (ppu-write-memory-at-addr (gb-ppu gb) addr val))
+          (#x40
+           (case (logand addr #x000f)
+             ((#x0 #x1 #x2 #x3 #x4 #x5 #x6 #x7 #x8 #x9 #xa #xb #xf) (ppu-write-memory-at-addr (gb-ppu gb) addr val))
+             (#xd (if (cgb-p gb) (setf (cgb-is-speed-armed? gb) (= (logand val #x01) #x01))))))
           (#x50
            (case (logand addr #x000f)
              (#x0 (setf (gb-is-bios? gb) (= val 0)))
-             ((#x1 #x2 #x3 #x4 #x5) (ppu-write-memory-at-addr (gb-ppu gb) addr val))))
+             ((#x1 #x2 #x3 #x4 #x5) (ppu-write-memory-at-addr (gb-ppu gb) addr val))
+             ;(#x6 #xff) TODO IR port handling CGB mode
+          ))
           (#x60 (ppu-write-memory-at-addr (gb-ppu gb) addr val))
           (#x70
            (case (logand addr #x000f)
@@ -85,16 +90,32 @@
                (#x0 (input-read-memory (gb-input gb)))
                (otherwise (aref (gb-zero-page gb) (logand addr #xff)))))
             ((#x10 #x20 #x30) (spu-read-memory-at-addr (gb-spu gb) addr))
-            (#x40 (ppu-read-memory-at-addr (gb-ppu gb) addr))
+            (#x40
+              (case (logand addr #x000f)
+                ((#x0 #x1 #x2 #x3 #x4 #x5 #x6 #x7 #x8 #x9 #xa #xb #xf) (ppu-read-memory-at-addr (gb-ppu gb) addr))
+                (#xd (if (cgb-p gb) (logior (if (cgb-is-speed-armed? gb) #x01 #x00) (if (cgb-is-double-speed? gb) #x80 #x00)) #x00))
+                (otherwise #xff)))
             (#x50
               (case (logand addr #x000f)
                 (#x0 (if (gb-is-bios? gb) #xff (if (cgb-p gb) #x11 #xff)))
                 ((#x1 #x2 #x3 #x4 #x5) (ppu-read-memory-at-addr (gb-ppu gb) addr))
+                ;(#x6 #xff) TODO IR port handling CGB mode
                 (otherwise #xff)))
             (#x60 (ppu-read-memory-at-addr (gb-ppu gb) addr))
             (#x70
              (if (= (logand addr #xff) #x70) (if (cgb-p gb) (gb-int-ram-bank gb))))
             (otherwise (aref (gb-zero-page gb) (logand addr #xff)))))))))
+
+(defun maybe-do-speed-switch (gb)
+  (when (cgb-is-speed-armed? gb)
+    (setf (gb-stopped? gb) nil
+          (cgb-is-double-speed? gb) (if (cgb-is-double-speed? gb) nil t)
+          (cgb-is-speed-armed? gb) nil)
+    (format t "is speed doubled ~A~%"
+            (cgb-is-double-speed? gb))
+    (if (cgb-is-double-speed? gb)
+        (setf (gbcpu-cpu-speed (gb-cpu gb)) (* +default-cpu-speed+ 2))
+        (setf (gbcpu-cpu-speed (gb-cpu gb)) +default-cpu-speed+))))
 
 (defun get-address-from-memory (gb addr)
   "Reads a 16-bit address from memory of GB at ADDR in little endian"
@@ -133,7 +154,7 @@
       (setf (gbcpu-div-clock cpu) (- (gbcpu-div-clock cpu) #x100))
       (write-memory-at-addr gb #xff04 (logand (+ (read-memory-at-addr gb #xff04) #x01) #xff))))
   (if (= (logand (read-memory-at-addr gb #xff07) #x04) #x04)
-    (incr-timer-by-cycles cpu gb (get-cycles-per-timer-tick (get-timer-frequency (read-memory-at-addr gb #xff07))))
+    (incr-timer-by-cycles cpu gb (get-cycles-per-timer-tick (gbcpu-cpu-speed cpu) (get-timer-frequency (read-memory-at-addr gb #xff07))))
     (setf (gbcpu-clock cpu) 0)))
 
 (defun incr-timer-by-cycles (cpu gb cycles-per-tick)
@@ -151,9 +172,9 @@
              (write-memory-at-addr gb #xff05 (+ (read-memory-at-addr gb #xff06) (logand new-ticks #xff))))
       (write-memory-at-addr gb #xff05 (logand new-ticks #xff)))))
 
-(defun get-cycles-per-timer-tick (freq)
+(defun get-cycles-per-timer-tick (cpu-speed freq)
   "number of cycles per timer tick based on the FREQ of the timer."
-  (/ +cpu-speed+ freq))
+  (/ cpu-speed freq))
 
 (defun get-timer-frequency (tac)
   (let ((tac-two-lsb (logand tac #x3)))
@@ -556,9 +577,12 @@
 (defparameter *debug* nil
   "when T debug info is collected/printed")
 
-(defconstant +cycles-per-internal-time-units+ (floor +cpu-speed+ internal-time-units-per-second))
-(defconstant +cycles-per-frame+ (floor +cpu-speed+ 60))
+;(defconstant +cycles-per-internal-time-units+ (floor +cpu-speed+ internal-time-units-per-second))
+;(defconstant +cycles-per-frame+ (floor +cpu-speed+ 60))
 (defconstant +time-units-per-frame+ (truncate (* (/ 60) internal-time-units-per-second)))
+
+(defun cycles-per-internal-time-units (cpu-speed) (floor cpu-speed internal-time-units-per-second))
+(defun cycles-per-frame (cpu-speed) (floor cpu-speed 60))
 
 (defparameter *ppu-time* (make-profiler))
 (defparameter *spu-time* (make-profiler))
@@ -608,9 +632,9 @@
                   (when (not (gb-stopped? gb))
                     (loop while (step-cpu cpu gb)
                           for cyc = 0 then (+ cyc (gbcpu-clock cpu))
-                          while (< cyc +cycles-per-frame+) do
+                          while (< cyc (cycles-per-frame (gbcpu-cpu-speed cpu))) do
                     (step-ppu ppu gb)
-                    (step-spu spu (gbcpu-clock cpu))
+                    (step-spu spu (gbcpu-clock cpu) (cycles-per-sample (gbcpu-cpu-speed cpu)) (cycles-frame-seq-step (gbcpu-cpu-speed cpu)))
                     (handle-timers cpu gb)
                     (handle-interrupts cpu gb)))
                 (spu-queue-audio spu))
@@ -640,6 +664,9 @@
         (gb-is-bios? gb) t
         (gb-int-ram-bank gb) 1
         (gb-stopped? gb) nil)
+  (when (cgb-p gb)
+    (setf (cgb-is-speed-armed? gb) nil
+          (cgb-is-double-speed? gb) nil))
   nil)
 
 (defun load-cart (gb cart)

@@ -4,9 +4,10 @@
 
 (defconstant +sample-rate+ 44100)
 (defconstant +audio-buffer-size+ 64)
-(defconstant +cycles-per-sample+ (floor +cpu-speed+ +sample-rate+))
-(defconstant +cycles-frame-seq-step+ (floor +cpu-speed+ 512))
 (defconstant +audio-normalize-factor+ 0.1)
+
+(defun cycles-per-sample (cpu-speed) (floor cpu-speed +sample-rate+))
+(defun cycles-frame-seq-step (cpu-speed) (floor cpu-speed 512))
 
 (defstruct gbspu
   "struct for SPU GameBoy hardware. 4 channel audio, 2 square waves, 1 wave sequencer, and
@@ -431,7 +432,7 @@
     (* (gbspu-buffer-index spu) 4))
   (setf (gbspu-buffer-index spu) 0))
 
-(defun step-spu (spu cycles)
+(defun step-spu (spu cycles cycles-per-sample cycles-frame-seq-step)
   "step the channels by the number of elapsed cycles"
   (when (gbspu-ena? spu)
     (step-channel-seq (gbspu-ch1 spu) cycles)
@@ -441,14 +442,14 @@
     (decf (gbspu-frame-sequencer-delay spu) cycles)
     (when (<= (gbspu-frame-sequencer-delay spu) 0)
       (setf (gbspu-frame-sequencer spu) (mod (+ (gbspu-frame-sequencer spu) 1) 8))
-      (incf (gbspu-frame-sequencer-delay spu) +cycles-frame-seq-step+)
+      (incf (gbspu-frame-sequencer-delay spu) cycles-frame-seq-step)
       (step-square-channel (gbspu-ch1 spu) (gbspu-frame-sequencer spu))
       (step-square-channel (gbspu-ch2 spu) (gbspu-frame-sequencer spu))
       (step-wave-channel (gbspu-ch3 spu) (gbspu-frame-sequencer spu))
       (step-noise-channel (gbspu-ch4 spu) (gbspu-frame-sequencer spu)))
     (decf (gbspu-delay spu) cycles)
     (when (<= (gbspu-delay spu) 0)
-      (incf (gbspu-delay spu) +cycles-per-sample+)
+      (incf (gbspu-delay spu) cycles-per-sample)
       (let ((output (mapcar #'+ (get-square-channel-output (gbspu-ch1 spu))
                  (get-square-channel-output (gbspu-ch2 spu))
                  (get-wave-channel-output (gbspu-ch3 spu))

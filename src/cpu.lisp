@@ -3,7 +3,7 @@
 
 (in-package :clboy)
 
-(defconstant +cpu-speed+ 4194304)
+(defconstant +default-cpu-speed+ 4194304)
 
 (defstruct gbcpu
   (a  0 :type (unsigned-byte 8))
@@ -17,6 +17,7 @@
   (sp 0 :type (unsigned-byte 16))
   (clock 0)
   (clock-remainder 0)
+  (cpu-speed +default-cpu-speed+)
   (div-clock 0 :type (unsigned-byte 16))
   (int-ena 0 :type (unsigned-byte 1))
   (halted 0 :type (unsigned-byte 1))
