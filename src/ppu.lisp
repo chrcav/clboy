@@ -66,7 +66,8 @@
   (ocps-obpi #xff :type (unsigned-byte 8))
   (hdma12 #x0000 :type (unsigned-byte 16))
   (hdma34 #x0000 :type (unsigned-byte 16))
-  (hdma5 #xff :type (unsigned-byte 8))
+  (hdma-len #x000 :type (unsigned-byte 12))
+  (vram-dma-type 0 :type (unsigned-byte 8))
   (opri #x00 :type (unsigned-byte 8)))
 
 
@@ -91,10 +92,11 @@
         (gbppu-wx ppu) 0
         (gbppu-vram-bank ppu) 0
         (gbppu-lcdc ppu) (make-ppulcdc))
-  (when (cgb-p ppu)
-    (setf (gbppu-hdma12 ppu) #x0000
-          (gbppu-hdma34 ppu) #x0000
-          (gbppu-hdma5 ppu) #xff)))
+  (when (cgbppu-p ppu)
+    (setf (cgbppu-hdma12 ppu) #x0000
+          (cgbppu-hdma34 ppu) #x0000
+          (cgbppu-hdma-len ppu) #x000
+          (cgbppu-vram-dma-type ppu) 0)))
 
 (defun ppu-write-lcdc (ppu val)
   "saves the lcdc byte as a ppulcdc struct in PPU based on VAL"
@@ -166,9 +168,17 @@
                  (#x4f (setf (gbppu-vram-bank ppu) (logand val #x01)))
                  (#x51 (setf (cgbppu-hdma12 ppu) (logior (logand (cgbppu-hdma12 ppu) #x00ff) (ash val 8))))
                  (#x52 (setf (cgbppu-hdma12 ppu) (logior (logand (cgbppu-hdma12 ppu) #xff00) (logand val #xf0))))
-                 (#x53 (setf (cgbppu-hdma34 ppu) (logior (logand (cgbppu-hdma34 ppu) #x00ff) (ash val 8))))
+                 (#x53 (setf (cgbppu-hdma34 ppu) (logior (logand (cgbppu-hdma34 ppu) #x00ff) (+ (logand (ash val 8) #x1f00) #x8000))))
                  (#x54 (setf (cgbppu-hdma34 ppu) (logior (logand (cgbppu-hdma34 ppu) #xff00) (logand val #xf0))))
-                 (#x55 (setf (cgbppu-hdma5 ppu) (logand val #x7f))) ;TODO need the highest order bit stored separately
+                 (#x55 (setf (cgbppu-hdma-len ppu) (ash (logand (+ val 1) #x7f) 4)
+                             (cgbppu-vram-dma-type ppu) (if (= (cgbppu-vram-dma-type ppu) 0)
+                                                            (if (= (logand val #x80) #x80) 2 1)
+                                                            (if (= (logand val #x80) #x00) 0)))
+                  (format t "hdma transfer type ~A requested: from x~X to x~X len ~A bytes~%"
+                          (cgbppu-vram-dma-type ppu)
+                          (cgbppu-hdma12 ppu)
+                          (cgbppu-hdma34 ppu)
+                          (cgbppu-hdma-len ppu)))
                  (#x68 (setf (cgbppu-bcps-bgpi ppu) val))
                  (#x69 (setf (aref (cgbppu-bg-cram ppu) (logand (cgbppu-bcps-bgpi ppu) #x3f)) val
                              (cgbppu-bcps-bgpi ppu) (if (> (cgbppu-bcps-bgpi ppu) #x7f) (+ (cgbppu-bcps-bgpi ppu) 1) (cgbppu-bcps-bgpi ppu))))
@@ -203,14 +213,11 @@
           (#x4a (gbppu-wy ppu))
           (#x4b (gbppu-wx ppu))
           (#x4f (logior (gbppu-vram-bank ppu) #xef))
-          ((#x51 #x52 #x53 #x54 #x68 #x69 #x6a #x6b #x6c)
+          ((#x51 #x52 #x53 #x54 #x55 #x68 #x69 #x6a #x6b #x6c)
            (if (cgbppu-p ppu)
                (case (logand addr #x00ff)
-                 (#x51 (logior (logand (cgbppu-hdma12 ppu) #x00ff) ))
-                 (#x52 (logior (ash (logand (cgbppu-hdma12 ppu) #xff00) -7)))
-                 (#x53 (logior (logand (cgbppu-hdma34 ppu) #x00ff)))
-                 (#x54 (logior (ash (logand (cgbppu-hdma34 ppu) #xff00) -7)))
-                 (#x55 (cgbppu-hdma5 ppu))
+                 ((#x51 #x52 #x53 #x54) #xff)
+                 (#x55 (if (= (cgbppu-vram-dma-type ppu) 0) #xff (- (ash (cgbppu-hdma-len ppu) -4) 1)))
                  (#x68 (cgbppu-bcps-bgpi ppu))
                  (#x69 (aref (cgbppu-bg-cram ppu) (cgbppu-bcps-bgpi ppu)))
                  (#x6a (cgbppu-ocps-obpi ppu))
@@ -246,19 +253,24 @@
 
 (defun calc-sprite-tile-addr (tile-no sprite-flags sprite-y-offset sprite-height &key (is-cgb? nil))
   "calculates the memory address of a sprites tile pixel data"
-  (+ (if (and is-cgb? (= (logand sprite-flags #x8) #x8)) #x2000 #x0000) (* tile-no 16)
+  (+ (if (and is-cgb? (= (logand sprite-flags #x8) #x8)) #x2000 #x0000)
+     (* tile-no 16)
      (* (if (> (logand sprite-flags #x40) 0)
-          (- sprite-height sprite-y-offset) sprite-y-offset) 2)))
+            (- sprite-height sprite-y-offset)
+            sprite-y-offset)
+        2)))
+
+(defun calc-sprite-tile-no (ppu sprite)
+  (if (= (ppulcdc-sprite-height (gbppu-lcdc ppu)) 16) (logand (caddr sprite) #xfe) (caddr sprite)))
 
 (defun add-sprite-to-ppu-framebuffer (ppu sprite)
   "adds a row of pixels from the visible portion of a sprite corresponding to the scanline
   location."
-  (let ((tile-no (if (= (ppulcdc-sprite-height (gbppu-lcdc ppu)) 16) (logand (caddr sprite) #xfe) (caddr sprite)))
-        (sprite-y-offset (calc-sprite-y-offset (gbppu-cur-line ppu) (car sprite))))
+  (let ((sprite-y-offset (calc-sprite-y-offset (gbppu-cur-line ppu) (car sprite))))
     (render-tile-line ppu
                       (gbppu-framebuffer ppu)
                       (gbppu-cur-line ppu)
-                      (calc-sprite-tile-addr tile-no (cadddr sprite) sprite-y-offset (ppulcdc-sprite-height (gbppu-lcdc ppu)) :is-cgb? (cgbppu-p ppu))
+                      (calc-sprite-tile-addr (calc-sprite-tile-no ppu sprite) (cadddr sprite) sprite-y-offset (ppulcdc-sprite-height (gbppu-lcdc ppu)) :is-cgb? (cgbppu-p ppu))
                       :start-x (- (cadr sprite) 8)
                       :xflip? (> (logand (cadddr sprite) #x20) 0)
                       :priority (ash (cadddr sprite) -7)
@@ -303,6 +315,11 @@
           ;(ppu-get-palette-color ppu cram palette-col)))
           ))))))
 
+(defun calc-bg-tile-no (ppu addr)
+  (if (= (ppulcdc-tiledata-area (gbppu-lcdc ppu)) #x0000)
+      (ppu-read-memory-at-addr ppu addr)
+      (make-signed-from-unsigned (ppu-read-memory-at-addr ppu addr))))
+
 (defun add-window-to-ppu-framebuffer (ppu)
   "adds a row of pixels from the visible portion of the window corresponding to the scanline
   location."
@@ -315,14 +332,18 @@
           for tilemapx from 0 to 31
           when (and (>= col 0) (< col +screen-pixel-width+))
       do
-      (let* ((addr (+ (ppulcdc-win-tilemap-area (gbppu-lcdc ppu)) (* (floor (- row (gbppu-wy ppu)) 8) 32) tilemapx))
-             (tile-no (if (= (ppulcdc-tiledata-area (gbppu-lcdc ppu)) #x0000)
-                        (ppu-read-memory-at-addr ppu addr)
-                        (make-signed-from-unsigned (ppu-read-memory-at-addr ppu addr)))))
+      (let ((addr (+ (ppulcdc-win-tilemap-area (gbppu-lcdc ppu)) (* (floor (- row (gbppu-wy ppu)) 8) 32) tilemapx)))
         (render-tile-line ppu
                           (gbppu-framebuffer ppu)
                           row
-                          (+ (if (and (cgbppu-p ppu) (= (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x8) #x8)) #x2000 #x0000) (ppulcdc-tiledata-area (gbppu-lcdc ppu)) (* tile-no #x10) (* (mod (- row (gbppu-wy ppu)) 8) 2))
+                          (+ (if (and
+                                   (cgbppu-p ppu)
+                                   (= (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x8) #x8))
+                                 #x2000
+                                 #x0000)
+                             (ppulcdc-tiledata-area (gbppu-lcdc ppu))
+                             (* (calc-bg-tile-no ppu addr) #x10)
+                             (* (mod (- row (gbppu-wy ppu)) 8) 2))
                           :start-x col
                           :xflip? (and (cgbppu-p ppu) (> (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x20) 0))
                           :is-background? t
@@ -340,10 +361,7 @@
              (addr (+ (ppulcdc-bg-tilemap-area (gbppu-lcdc ppu))
                       (mod (* (floor yoffset 8) +tilemap-tile-width+)
                            (* +tilemap-tile-width+ +tilemap-tile-height+))
-                      (mod (floor xoffset 8) +tilemap-tile-width+)))
-             (tile-no (if (= (ppulcdc-tiledata-area (gbppu-lcdc ppu)) #x0000)
-                        (ppu-read-memory-at-addr ppu addr)
-                        (make-signed-from-unsigned (ppu-read-memory-at-addr ppu addr)))))
+                      (mod (floor xoffset 8) +tilemap-tile-width+))))
         (render-tile-line ppu
                           (gbppu-framebuffer ppu)
                           (gbppu-cur-line ppu)
@@ -353,7 +371,7 @@
                                  #x2000
                                  #x0000)
                              (ppulcdc-tiledata-area (gbppu-lcdc ppu))
-                             (* tile-no 16)
+                             (* (calc-bg-tile-no ppu addr) #x10)
                              (* (mod yoffset 8) 2))
                           :start-x col
                           :xflip? (and
@@ -365,7 +383,8 @@
                                        (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x7)
                                        (gbppu-bg-palette ppu)))))))
 
-(defun maybe-do-oam-dma (ppu gb)
+;;TODO should only transfer data based on the cycles that have passed for all dma transfers
+(defun maybe-do-oam-dma (ppu gb cycles)
   "checks for DMA and processes copying memory into OAM"
   (let ((initial (ash (gbppu-do-oam-dma ppu) 8)))
     (when (> initial 0)
@@ -376,20 +395,49 @@
               (write-memory-at-addr gb dest (read-memory-at-addr gb src))))
       (setf (gbppu-do-oam-dma ppu) 0))))
 
-;;TODO need to make sure this works for both hblank and general purpose dma
-(defun maybe-do-hdma (ppu gb)
-  "checks for HDMA and processes copying memory into VRAM"
-  (when (< (cgbppu-hdma5 ppu) #x80)
-    (let ((len (logand (cgbppu-hdma5 ppu) #x7f))
-          (start-src (logand (cgbppu-hdma12 ppu) #xfff0))
-          (start-dest (logand (cgbppu-hdma34 ppu) #xfff0)))
+(defun maybe-do-gen-dma (ppu gb cycles)
+  "checks for general purpose vram DMA and processes copying memory into VRAM"
+  (when (= (cgbppu-vram-dma-type ppu) 1)
+    (let ((len (cgbppu-hdma-len ppu))
+          (transfer-bytes (* cycles 2))
+          (start-src (cgbppu-hdma12 ppu))
+          (start-dest (cgbppu-hdma34 ppu)))
       (when (> len 0)
-        (loop for i from 0 to #x10
+        (loop for i from 0 to transfer-bytes
               do
               (let ((src (+ start-src i))
                     (dest (+ start-dest i)))
                 (write-memory-at-addr gb dest (read-memory-at-addr gb src))))
-        (setf (cgbppu-hdma5 ppu) (if (< (- len #x1) 0) #xff (- len #x1)))))))
+        (if (< (- len transfer-bytes) 0)
+            (setf (cgbppu-hdma-len ppu)  #x00
+                  (cgbppu-vram-dma-type ppu) 0
+                  (cgbppu-hdma12 ppu) #xffff
+                  (cgbppu-hdma34 ppu) #xffff)
+            (setf (cgbppu-hdma-len ppu)  (- len transfer-bytes)
+                  (cgbppu-hdma12 ppu) (+ start-src transfer-bytes)
+                  (cgbppu-hdma34 ppu) (+ start-dest transfer-bytes)))))))
+
+(defun maybe-do-h-dma (ppu gb cycles)
+  "checks for hblank vram DMA and processes copying memory into VRAM"
+  (when (= (cgbppu-vram-dma-type ppu) 2)
+    (let ((len (cgbppu-hdma-len ppu))
+          (transfer-bytes (* cycles 2))
+          (start-src (cgbppu-hdma12 ppu))
+          (start-dest (cgbppu-hdma34 ppu)))
+      (when (> len 0)
+        (loop for i from 0 to transfer-bytes
+              do
+              (let ((src (+ start-src i))
+                    (dest (+ start-dest i)))
+                (write-memory-at-addr gb dest (read-memory-at-addr gb src))))
+        (if (< (- len transfer-bytes) 0)
+            (setf (cgbppu-hdma-len ppu)  #x00
+                  (cgbppu-vram-dma-type ppu) 0
+                  (cgbppu-hdma12 ppu) #xffff
+                  (cgbppu-hdma34 ppu) #xffff)
+            (setf (cgbppu-hdma-len ppu)  (- len transfer-bytes)
+                  (cgbppu-hdma12 ppu) (+ start-src transfer-bytes)
+                  (cgbppu-hdma34 ppu) (+ start-dest transfer-bytes)))))))
 
 (defun check-ly-lyc (ppu gb)
   "compares ly and lyc registers, triggers interrupt if they match and the interrupt is enabled"
@@ -428,15 +476,19 @@
           when (< row +tilemap-pixel-height+) do
           (loop for col = 0 then (+ col 8)
                 while (< col +tilemap-pixel-width+) do
-        (let* ((addr (+ (ppulcdc-bg-tilemap-area (gbppu-lcdc ppu))
-                        (* (floor row 8) +tilemap-tile-width+) (floor col 8)))
-               (tile-no (if (= (ppulcdc-tiledata-area (gbppu-lcdc ppu)) #x0000)
-                          (ppu-read-memory-at-addr ppu addr)
-                          (make-signed-from-unsigned (ppu-read-memory-at-addr ppu addr)))))
+        (let ((addr (+ (ppulcdc-bg-tilemap-area (gbppu-lcdc ppu))
+                        (* (floor row 8) +tilemap-tile-width+) (floor col 8))))
           (render-tile-line ppu
                             framebuffer
                             row
-                            (+ (ppulcdc-tiledata-area (gbppu-lcdc ppu)) (* tile-no 16) (* (mod row 8) 2))
+                            (+ (if (and
+                                     (cgbppu-p ppu)
+                                     (= (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x8) #x8))
+                                   #x2000
+                                   #x0000)
+                               (ppulcdc-tiledata-area (gbppu-lcdc ppu))
+                               (* (calc-bg-tile-no ppu addr) 16)
+                               (* (mod row 8) 2))
                             :start-x col
                             :cram (if (cgbppu-p ppu) (cgbppu-obj-cram ppu))
                             :is-background? t
@@ -462,7 +514,7 @@
   (sdl2:render-copy renderer texture :dest-rect rect)
   (sdl2:render-present renderer))
 
-(defun step-ppu (ppu gb)
+(defun step-ppu (ppu gb cycles)
   "handles updating the PPU mode and drawing to a texture when the defined number of cycles have
   elapsed. transitions the PPU through the modes and processes vram."
   (when (and (not (gbppu-enabled? ppu))
@@ -470,13 +522,15 @@
     (setf (gbppu-cycles ppu) 0)
     (ppu-mode-transition ppu gb 0))
   (when (gbppu-enabled? ppu)
-    (incf (gbppu-cycles ppu) (gbcpu-clock (gb-cpu gb)))
-    (maybe-do-oam-dma ppu gb)
+    (incf (gbppu-cycles ppu) cycles)
+    (maybe-do-oam-dma ppu gb cycles)
+    (if (cgbppu-p ppu) (maybe-do-gen-dma ppu gb cycles))
     (check-ly-lyc ppu gb)
     (case (gbppu-mode ppu)
       ; in Hblank state
       (0 (when (> (gbppu-cycles ppu) +hblank-duration-dots+)
-           (if (cgbppu-p ppu) (maybe-do-hdma ppu gb))
+           ;TODO 8 should be replaced with cycles to be more accurate
+           (if (cgbppu-p ppu) (maybe-do-h-dma ppu gb 8))
            (incf (gbppu-cur-line ppu))
            (if (> (gbppu-cur-line ppu) (- +screen-pixel-height+ 1))
              (progn (ppu-mode-transition ppu gb 1)

@@ -149,24 +149,24 @@
 ;; TIMER
 (defun handle-timers (cpu gb)
   "updates timer registers based on the number of cycles from the last instruction."
-  (if (> (gbcpu-div-clock cpu) #xff)
-    (progn
-      (setf (gbcpu-div-clock cpu) (- (gbcpu-div-clock cpu) #x100))
-      (write-memory-at-addr gb #xff04 (logand (+ (read-memory-at-addr gb #xff04) #x01) #xff))))
+  (let ((cycles (gbcpu-clock cpu))
+        (remainder (gbcpu-clock-remainder cpu)))
   (if (= (logand (read-memory-at-addr gb #xff07) #x04) #x04)
-    (incr-timer-by-cycles cpu gb (get-cycles-per-timer-tick (gbcpu-cpu-speed cpu) (get-timer-frequency (read-memory-at-addr gb #xff07))))
-    (setf (gbcpu-clock cpu) 0)))
+    (incr-timer-by-cycles cpu gb (+ cycles remainder) (get-cycles-per-timer-tick (gbcpu-cpu-speed cpu) (get-timer-frequency (gbcpu-cpu-speed cpu) (read-memory-at-addr gb #xff07)))))
+  (incf (gbcpu-div-clock cpu) (/ cycles (if (and (cgb-p gb) (cgb-is-double-speed? gb)) 2 4)))
+  (when (> (gbcpu-div-clock cpu) #xff)
+      (setf (gbcpu-div-clock cpu) (- (gbcpu-div-clock cpu) #x100))
+      (write-memory-at-addr gb #xff04 (logand (+ (read-memory-at-addr gb #xff04) #x01) #xff)))
+  (setf (gbcpu-clock cpu) 0)))
 
-(defun incr-timer-by-cycles (cpu gb cycles-per-tick)
+(defun incr-timer-by-cycles (cpu gb cycles cycles-per-tick)
   "incements the timer by the number of cycles of the last instuction and triggers interrupt when
   CYCLES-PER-TICK cycles have elapsed since last interrupt"
-  (let* ((cycles (+ (gbcpu-clock cpu) (gbcpu-clock-remainder cpu)))
-         (ticks (floor cycles cycles-per-tick))
+  (let* ((ticks (floor cycles cycles-per-tick))
          (remainder (mod cycles cycles-per-tick))
          (cur-ticks (read-memory-at-addr gb #xff05))
          (new-ticks (+ cur-ticks ticks)))
-    (setf (gbcpu-clock-remainder cpu) remainder
-          (gbcpu-clock cpu) 0)
+    (setf (gbcpu-clock-remainder cpu) remainder)
     (if (> new-ticks #xff)
       (progn (set-interrupt-flag gb 2)
              (write-memory-at-addr gb #xff05 (+ (read-memory-at-addr gb #xff06) (logand new-ticks #xff))))
@@ -176,12 +176,12 @@
   "number of cycles per timer tick based on the FREQ of the timer."
   (/ cpu-speed freq))
 
-(defun get-timer-frequency (tac)
+(defun get-timer-frequency (cpu-speed tac)
   (let ((tac-two-lsb (logand tac #x3)))
-    (if (= tac-two-lsb #x01) 262144
-      (if (= tac-two-lsb #x02) 65536
-        (if (= tac-two-lsb #x03) 16384
-          4096)))))
+    (if (= tac-two-lsb #x01) (/ cpu-speed 16)
+      (if (= tac-two-lsb #x02) (/ cpu-speed 64)
+        (if (= tac-two-lsb #x03) (/ cpu-speed 256)
+          (/ cpu-speed 1024))))))
 
 ;; utils
 
@@ -633,10 +633,11 @@
                     (loop while (step-cpu cpu gb)
                           for cyc = 0 then (+ cyc (gbcpu-clock cpu))
                           while (< cyc (cycles-per-frame (gbcpu-cpu-speed cpu))) do
-                    (step-ppu ppu gb)
-                    (step-spu spu (gbcpu-clock cpu) (cycles-per-sample (gbcpu-cpu-speed cpu)) (cycles-frame-seq-step (gbcpu-cpu-speed cpu)))
+                    (let ((cycles (/ (gbcpu-clock cpu) (if (and (cgb-p gb) (cgb-is-double-speed? gb)) 2 1))))
+                    (step-ppu ppu gb cycles)
+                    (step-spu spu cycles (cycles-per-sample +default-cpu-speed+) (cycles-frame-seq-step +default-cpu-speed+))
                     (handle-timers cpu gb)
-                    (handle-interrupts cpu gb)))
+                    (handle-interrupts cpu gb))))
                 (spu-queue-audio spu))
                 (step-rtc (gbcart-timer (gb-cart gb)))
                 (let ((now (get-internal-real-time)))
