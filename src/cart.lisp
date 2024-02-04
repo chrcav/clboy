@@ -136,12 +136,11 @@
     ((#x0000 #x1000)
      (setf (gbcart-ramon cart) (= (logand val #xf) #x0a)))
     ((#x2000 #x3000)
-     (let* ((lower5bits (logand val #x1f))
-            (rombank
-              (logand
+     (let ((lower5bits (logand val #x1f)))
+       (setf (gbcart-rombank cart) 
+             (logand
                 (+ (logand (gbcart-rombank cart) #x60) (if (> lower5bits 1) lower5bits 1))
-                (gbcart-rommask cart))))
-       (setf (gbcart-rombank cart) rombank)))
+                (gbcart-rommask cart)))))
     ((#x4000 #x5000)
      (let ((rombank
              (logand
@@ -176,9 +175,8 @@
     ((#x0000 #x1000 #x2000 #x3000)
      (if (= (logand addr #x100) 0)
        (setf (gbcart-ramon cart) (= (logand val #xf) #x0a))
-       (let* ((lsb (logand val #xf))
-              (rombank (logand (if (> lsb 1) lsb 1) (gbcart-rommask cart))))
-         (setf (gbcart-rombank cart) rombank))))
+       (let ((lsb (logand val #xf)))
+         (setf (gbcart-rombank cart) (logand (if (> lsb 1) lsb 1) (gbcart-rommask cart))))))
     ((#xa000 #xb000)
      (if (gbcart-ramon cart)
        (setf (aref (gbcart-ram cart) (logand addr #x1ff)) val)))))
@@ -206,8 +204,7 @@
     ((#x0000 #x1000)
      (setf (gbcart-ramon cart) (= (logand val #xf) #x0a)))
     ((#x2000 #x3000)
-     (let* ((rombank (logand (if (> val 1) val 1) (gbcart-rommask cart))))
-       (setf (gbcart-rombank cart) rombank)))
+     (setf (gbcart-rombank cart) (logand (if (> val 1) val 1) (gbcart-rommask cart))))
     ((#x4000 #x5000)
      (if (= (logand val #x8) #x0)
        (setf (gbcart-rambank cart) (logand val (gbcart-rammask cart)))

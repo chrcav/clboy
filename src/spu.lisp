@@ -278,12 +278,12 @@
     (7 112)))
 
 (defun gen-lfsr (channel)
-	(let* ((lfsr (channel-lfsr channel))
+  (let* ((lfsr (channel-lfsr channel))
          (xor-res (logxor (ldb (byte 1 0) (logand lfsr #x01)) (ldb (byte 1 0) (logand (ash lfsr -1) #x01))))
          (new-lfsr (logior (logior (ash lfsr -1) (ash xor-res 14)))))
     (if (= (logand (channel-r3 channel) #x8) #x8)
-      (logand (logior new-lfsr (ash xor-res 6)) #x7f)
-      new-lfsr)))
+        (logand (logior new-lfsr (ash xor-res 6)) #x7f)
+        new-lfsr)))
 
 (defun step-square-channel (channel frame-sequencer)
   "step the square wave CHANNEL based on the frame sequencer"
@@ -331,12 +331,15 @@
     (setf (channel-cur-bit channel) (if (= (channel-cur-bit channel) 0) 1 0))))
 
 (defun get-wave-channel-output (channel)
-  (let* ((wave-val
-           (logand (ash (channel-seq channel)
-                (if (= (channel-cur-bit channel) 0) -4 0)) #xf))
-         (wave-val-with-vol (ash wave-val (- (channel-vol channel))))
-         (output (channel-dac channel wave-val-with-vol)))
-    (channel-stereo-output channel output)))
+  (channel-stereo-output
+    channel
+    (channel-dac
+      channel
+      (ash (logand
+             (ash (channel-seq channel)
+                  (if (= (channel-cur-bit channel) 0) -4 0))
+             #xf)
+           (- (channel-vol channel))))))
 
 (defun channel-dac (channel out)
   (if (channel-ena? channel)
@@ -349,14 +352,14 @@
     (setf (channel-cur-bit channel) (mod (+ (channel-cur-bit channel) 1) 8))))
 
 (defun get-square-channel-output (channel)
-  (let ((output
-          (channel-dac channel
-                       (* (logand
-                            (ash (channel-seq channel)
-                                 (- 0 (channel-cur-bit channel)))
-                            #x1)
-                          (channel-vol channel)))))
-    (channel-stereo-output channel output)))
+  (channel-stereo-output
+    channel
+    (channel-dac channel
+                 (* (logand
+                      (ash (channel-seq channel)
+                           (- 0 (channel-cur-bit channel)))
+                      #x1)
+                    (channel-vol channel)))))
 
 (defun step-noise-channel-seq (channel cycles)
   (when (<= (decf (channel-timer channel) cycles) 0)
@@ -364,10 +367,10 @@
     (setf (channel-lfsr channel) (gen-lfsr channel))))
 
 (defun get-noise-channel-output (channel)
-  (let ((output (channel-dac channel
-      (* (logand (channel-lfsr channel) #x1)
-         (channel-vol channel)))))
-    (channel-stereo-output channel output)))
+  (channel-stereo-output channel
+                         (channel-dac channel
+                                      (* (logand (channel-lfsr channel) #x1)
+                                         (channel-vol channel)))))
 
 (defun channel-stereo-output (channel out)
   (list

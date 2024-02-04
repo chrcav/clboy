@@ -43,6 +43,11 @@
           (#x00
            (case (logand addr #x000f)
              (#x0 (setf (gbinput-reg (gb-input gb)) val))
+             (#x4 (setf (gb-div-clock gb) 0
+                        (gb-tima gb) (gb-tma gb)))
+             (#x5 (setf (gb-tima gb) val))
+             (#x6 (setf (gb-tma gb) val))
+             (#x7 (setf (gb-tac gb) val))
              (otherwise (setf (aref (gb-zero-page gb) (logand addr #xff)) val))))
           ((#x10 #x20 #x30) (spu-write-memory-at-addr (gb-spu gb) addr val))
           (#x40
@@ -88,6 +93,10 @@
             (#x00
              (case (logand addr #x000f)
                (#x0 (input-read-memory (gb-input gb)))
+               (#x4 (gb-div-clock gb))
+               (#x5 (gb-tima gb))
+               (#x6 (gb-tma gb))
+               (#x7 (gb-tac gb))
                (otherwise (aref (gb-zero-page gb) (logand addr #xff)))))
             ((#x10 #x20 #x30) (spu-read-memory-at-addr (gb-spu gb) addr))
             (#x40
@@ -151,37 +160,31 @@
   "updates timer registers based on the number of cycles from the last instruction."
   (let ((cycles (gbcpu-clock cpu))
         (remainder (gbcpu-clock-remainder cpu)))
-  (if (= (logand (read-memory-at-addr gb #xff07) #x04) #x04)
-    (incr-timer-by-cycles cpu gb (+ cycles remainder) (get-cycles-per-timer-tick (gbcpu-cpu-speed cpu) (get-timer-frequency (gbcpu-cpu-speed cpu) (read-memory-at-addr gb #xff07)))))
-  (incf (gbcpu-div-clock cpu) (/ cycles (if (and (cgb-p gb) (cgb-is-double-speed? gb)) 2 4)))
-  (when (> (gbcpu-div-clock cpu) #xff)
-      (setf (gbcpu-div-clock cpu) (- (gbcpu-div-clock cpu) #x100))
-      (write-memory-at-addr gb #xff04 (logand (+ (read-memory-at-addr gb #xff04) #x01) #xff)))
+  (if (= (logand (gb-tac gb) #x04) #x04)
+    (incr-timer-by-cycles cpu gb (+ cycles remainder) (get-cycles-per-timer-tick (gb-tac gb))))
+  (incf (gbcpu-div-cycles cpu) (/ cycles 4))
+  (when (> (gbcpu-div-cycles cpu) #xff)
+      (setf (gbcpu-div-cycles cpu) (- (gbcpu-div-cycles cpu) #x100)
+            (gb-div-clock gb) (logand (+ (gb-div-clock gb) #x01) #xff)))
   (setf (gbcpu-clock cpu) 0)))
 
 (defun incr-timer-by-cycles (cpu gb cycles cycles-per-tick)
   "incements the timer by the number of cycles of the last instuction and triggers interrupt when
   CYCLES-PER-TICK cycles have elapsed since last interrupt"
-  (let* ((ticks (floor cycles cycles-per-tick))
-         (remainder (mod cycles cycles-per-tick))
-         (cur-ticks (read-memory-at-addr gb #xff05))
-         (new-ticks (+ cur-ticks ticks)))
-    (setf (gbcpu-clock-remainder cpu) remainder)
+  (let ((new-ticks (+ (gb-tima gb) (floor cycles cycles-per-tick))))
+    (setf (gbcpu-clock-remainder cpu) (mod cycles cycles-per-tick))
     (if (> new-ticks #xff)
       (progn (set-interrupt-flag gb 2)
-             (write-memory-at-addr gb #xff05 (+ (read-memory-at-addr gb #xff06) (logand new-ticks #xff))))
-      (write-memory-at-addr gb #xff05 (logand new-ticks #xff)))))
+             (setf (gb-tima gb) (+ (gb-tma gb) (logand new-ticks #xff))))
+      (setf (gb-tima gb) (logand new-ticks #xff)))))
 
-(defun get-cycles-per-timer-tick (cpu-speed freq)
-  "number of cycles per timer tick based on the FREQ of the timer."
-  (/ cpu-speed freq))
-
-(defun get-timer-frequency (cpu-speed tac)
+(defun get-cycles-per-timer-tick (tac)
+  "number of cycles per timer tick based on the TAC register of the timer."
   (let ((tac-two-lsb (logand tac #x3)))
-    (if (= tac-two-lsb #x01) (/ cpu-speed 16)
-      (if (= tac-two-lsb #x02) (/ cpu-speed 64)
-        (if (= tac-two-lsb #x03) (/ cpu-speed 256)
-          (/ cpu-speed 1024))))))
+    (if (= tac-two-lsb #x01) 16
+      (if (= tac-two-lsb #x02) 64
+        (if (= tac-two-lsb #x03) 256
+          1024)))))
 
 ;; utils
 
