@@ -239,10 +239,10 @@
     ((#x0000 #x1000)
      (setf (gbcart-ramon cart) (= (logand val #xf) #x0a)))
     (#x2000
-     (let ((rombank (logand (logior (logand (gbcart-rommask cart) #x100) val) (gbcart-rommask cart))))
+     (let ((rombank (logand (logior (logand (gbcart-rombank cart) #x100) val) (gbcart-rommask cart))))
        (setf (gbcart-rombank cart) rombank)))
     (#x3000
-     (let ((rombank (logand (logior (logand (gbcart-rommask cart) #xff) (logand val #x1)) (gbcart-rommask cart))))
+     (let ((rombank (logand (logior (logand (gbcart-rombank cart) #xff) (if (= val 1) #x100 0)) (gbcart-rommask cart))))
        (setf (gbcart-rombank cart) rombank)))
     ((#x4000 #x5000)
      (setf (gbcart-rambank cart) (logand (logand (ash val -5) #x03) (gbcart-rammask cart))))
