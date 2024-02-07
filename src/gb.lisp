@@ -60,11 +60,15 @@
              ((#x1 #x2 #x3 #x4 #x5) (ppu-write-memory-at-addr (gb-ppu gb) addr val))
              ;(#x6 #xff) TODO IR port handling CGB mode
           ))
-          (#x60 (ppu-write-memory-at-addr (gb-ppu gb) addr val))
+          (#x60
+           (case (logand addr #x000f)
+             ((#x8 #x9 #xa #xb) (ppu-write-memory-at-addr (gb-ppu gb) addr val))
+             (otherwise (setf (aref (gb-zero-page gb) (logand addr #xff)) val))))
           (#x70
            (case (logand addr #x000f)
              (#x0 (if (cgb-p gb) (setf (gb-int-ram-bank gb) (if (> (logand val #x7) 0) (logand val #x7) 1))))
-             ((#x2 #x3 #x4 #x5) (ppu-write-memory-at-addr (gb-ppu gb) addr val))))
+             ((#x2 #x3 #x4 #x5) (setf (aref (gb-zero-page gb) (logand addr #xff)) val)) ;CGB undocumented registers
+             ((#x6 #x7) (spu-write-memory-at-addr (gb-spu gb) addr val)))) ;CGB SPU PCM
           (otherwise (setf (aref (gb-zero-page gb) (logand addr #xff)) val))))))))
 
 (defun read-memory-at-addr (gb addr)
@@ -110,9 +114,15 @@
                 ((#x1 #x2 #x3 #x4 #x5) (ppu-read-memory-at-addr (gb-ppu gb) addr))
                 ;(#x6 #xff) TODO IR port handling CGB mode
                 (otherwise #xff)))
-            (#x60 (ppu-read-memory-at-addr (gb-ppu gb) addr))
+            (#x60
+             (case (logand addr #x000f)
+               ((#x8 #x9 #xa #xb) (ppu-read-memory-at-addr (gb-ppu gb) addr))
+               (otherwise (aref (gb-zero-page gb) (logand addr #xff)))))
             (#x70
-             (if (= (logand addr #xff) #x70) (if (cgb-p gb) (gb-int-ram-bank gb))))
+             (case (logand addr #x000f)
+               (#x0 (if (cgb-p gb) (gb-int-ram-bank gb)))
+               ((#x1 #x2 #x3 #x4 #x5) (aref (gb-zero-page gb) (logand addr #xff))) ;CGB mode undocumented registers
+               ((#x6 #x7) (spu-read-memory-at-addr (gb-spu gb) addr)))) ;CGB mode SPU PCM
             (otherwise (aref (gb-zero-page gb) (logand addr #xff)))))))))
 
 (defun maybe-do-speed-switch (gb)
@@ -137,19 +147,19 @@
   "handles interrupts that are enabled and active based on registers at #xff0f and #xffff. Interrupts
   are passed to the CPU to execute a call like instruction"
   ; VBLANK interupt
-  (if (= (logand (logand (read-memory-at-addr gb #xffff) #x01) (logand (read-memory-at-addr gb #xff0f) #x01)) #x01)
+  (if (= (logand (read-memory-at-addr gb #xffff) (read-memory-at-addr gb #xff0f) #x01) #x01)
     (do-interrupt cpu gb 0)
   ; LCDC Status interupt
-  (if (= (logand (logand (read-memory-at-addr gb #xffff) #x02) (logand (read-memory-at-addr gb #xff0f) #x02)) #x02)
+  (if (= (logand (read-memory-at-addr gb #xffff) (read-memory-at-addr gb #xff0f) #x02) #x02)
     (do-interrupt cpu gb 1)
   ; Timer interupt
-  (if (= (logand (logand (read-memory-at-addr gb #xffff) #x04) (logand (read-memory-at-addr gb #xff0f) #x04)) #x04)
+  (if (= (logand (read-memory-at-addr gb #xffff) (read-memory-at-addr gb #xff0f) #x04) #x04)
     (do-interrupt cpu gb 2)
   ; Serial Transfer interupt
-  (if (= (logand (logand (read-memory-at-addr gb #xffff) #x08) (logand (read-memory-at-addr gb #xff0f) #x08)) #x08)
+  (if (= (logand (read-memory-at-addr gb #xffff) (read-memory-at-addr gb #xff0f) #x08) #x08)
     (do-interrupt cpu gb 3)
   ; Hi-Lo of P10-P13 interupt
-  (if (= (logand (logand (read-memory-at-addr gb #xffff) #x10) (logand (read-memory-at-addr gb #xff0f) #x10)) #x10)
+  (if (= (logand (read-memory-at-addr gb #xffff) (read-memory-at-addr gb #xff0f) #x10) #x10)
     (do-interrupt cpu gb 4)))))))
 
 (defun set-interrupt-flag (gb bit-pos)
@@ -635,21 +645,22 @@
                   (when (not (gb-stopped? gb))
                     (loop while (step-cpu cpu gb)
                           for cyc = 0 then (+ cyc (gbcpu-clock cpu))
-                          while (< cyc (cycles-per-frame (gbcpu-cpu-speed cpu))) do
+                          while (< cyc (cycles-per-frame +default-cpu-speed+)) do
                     (let ((cycles (/ (gbcpu-clock cpu) (if (and (cgb-p gb) (cgb-is-double-speed? gb)) 2 1))))
-                    (step-ppu ppu gb cycles)
-                    (step-spu spu cycles (cycles-per-sample +default-cpu-speed+) (cycles-frame-seq-step +default-cpu-speed+))
+                      (step-ppu ppu gb cycles)
+                      (step-spu spu (gbcpu-clock cpu) (cycles-per-sample (gbcpu-cpu-speed cpu)) (cycles-frame-seq-step (gbcpu-cpu-speed cpu)))
                     (handle-timers cpu gb)
                     (handle-interrupts cpu gb))))
                 (spu-queue-audio spu))
                 (step-rtc (gbcart-timer (gb-cart gb)))
                 (let ((now (get-internal-real-time)))
-                  (when (and *debug* (< (- now last-frame-time) +time-units-per-frame+))
+                  (when (< (- now last-frame-time) +time-units-per-frame+)
+                    (when *debug*
                     (format t "timeunits since last frame ~A, Sleeping for: ~A~%"
                             (- now last-frame-time)
                       (coerce (/ (- +time-units-per-frame+
                             (- now last-frame-time))
-                         internal-time-units-per-second) 'float))
+                         internal-time-units-per-second) 'float)))
                     (sleep
                       (/ (- +time-units-per-frame+
                             (- now last-frame-time))

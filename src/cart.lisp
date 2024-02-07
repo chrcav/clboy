@@ -40,6 +40,7 @@
     (get-ramsize-from-rom cart)
     (initialize-ram-from-file cart (concatenate 'string filename ".ram"))
     (get-cgb cart)
+    (is-supported-carttype? cart)
     cart))
 
 (defun cart-write-ram-to-file (cart filename)
@@ -88,6 +89,18 @@
 
 (defun get-cgb (cart)
   (setf (gbcart-cgb cart) (cart-read-memory-at-addr cart #x143)))
+
+(defun is-supported-carttype? (cart)
+  "Checks CART for a type and checks against support cart type values"
+  (case (gbcart-carttype cart)
+    ((#x00 ; rom only
+      #x01 #x02 #x03 ; mbc1
+      #x05 #x06 ; mbc2
+      #x0f #x10 #x11 #x12 #x13 ;mbc3
+      #x19 #x1a #x1b #x1c #x1d #x1e) ;mbc5
+     t)
+    (otherwise (format t "Unsupported cartridge type ~X~%" (gbcart-carttype cart))
+               nil)))
 
 (defun cart-read-memory-at-addr (cart addr)
   "Route memory reads from mmu to CART memory at ADDR. Memory can be ROM, RAM, or other cart data

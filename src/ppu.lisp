@@ -243,11 +243,12 @@
 
 (defun add-sprites-to-ppu-framebuffer (ppu row)
   "loops through oam and adds sprites to framebuffer that overlap the current scanline location."
-  (loop for addr = #xfe00 then (+ addr 4)
-        while (< addr #xfea0)
-        for sprite = (read-sprite ppu addr)
-        when (sprite-overlaps-scanline? sprite row (ppulcdc-sprite-height (gbppu-lcdc ppu)))
-        do (add-sprite-to-ppu-framebuffer ppu row sprite)))
+  (when (< row +screen-pixel-height+)
+    (loop for addr = #xfe00 then (+ addr 4)
+          while (< addr #xfea0)
+          for sprite = (read-sprite ppu addr)
+          when (sprite-overlaps-scanline? sprite row (ppulcdc-sprite-height (gbppu-lcdc ppu)))
+          do (add-sprite-to-ppu-framebuffer ppu row sprite))))
 
 (defun calc-sprite-y-offset (row sprite-y)
    (- row (- sprite-y 16)))
@@ -312,25 +313,29 @@
                          (palette 0) (framebuffer-width +screen-pixel-width+) (bg-buffer))
   "adds a row of pixels from the visible portion of a tile corresponding to the scanline
   location."
-  (replace framebuffer 
-           (mapcan #'(lambda (col colorval)
-                       (if (not (null col)) 
-                           (if (render-pixel? colorval
-                                              bg-buffer
-                                              :buffer-pos (+ row-start-pixel-pos col)
-                                              :priority priority
-                                              :is-background? is-background?)
-                               (if cram
-                                   (ppu-get-palette-color cram palette colorval)
-                                   (aref *colors* (logand (ash palette (* colorval -2)) 3)))
-                               (loop for n from 0 to 2
-                                     for framebuf-pos = (+ (* (+ row-start-pixel-pos col) 3) n)
-                                     collect (aref framebuffer framebuf-pos)))))
-                   (loop for i from 0 to 7
-                         for col = (+ start-x i)
-                         collect (if (and (>= col 0) (< col framebuffer-width)) col))
-                   (maybe-reverse (get-color-vals colorbytes) :rev? xflip?))
-           :start1 (* (+ row-start-pixel-pos (if (< start-x 0) 0 start-x)) 3)))
+    (when (< start-x framebuffer-width)
+      (replace framebuffer 
+               (mapcan #'(lambda (col colorval)
+                           (if (not (null col)) 
+                               (if (render-pixel? colorval
+                                                  bg-buffer
+                                                  :buffer-pos (+ row-start-pixel-pos col)
+                                                  :priority priority
+                                                  :is-background? is-background?)
+                                   (progn
+                                     ;TODO need to find a better way to track transparancy and priority
+                                     (setf (aref bg-buffer (+ row-start-pixel-pos col)) colorval)
+                                     (if cram
+                                         (ppu-get-palette-color cram palette colorval)
+                                         (aref *colors* (logand (ash palette (* colorval -2)) 3))))
+                                   (loop for n from 0 to 2
+                                         for framebuf-pos = (+ (* (+ row-start-pixel-pos col) 3) n)
+                                         collect (aref framebuffer framebuf-pos)))))
+                       (loop for i from 0 to 7
+                             for col = (+ start-x i)
+                             collect (if (and (>= col 0) (< col framebuffer-width)) col))
+                       (maybe-reverse (get-color-vals colorbytes) :rev? xflip?))
+               :start1 (* (+ row-start-pixel-pos (if (< start-x 0) 0 start-x)) 3))))
 
 (defun calc-bg-tile-no (ppu addr)
   (if (= (ppulcdc-tiledata-area (gbppu-lcdc ppu)) #x0000)

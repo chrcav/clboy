@@ -74,6 +74,7 @@
     ((#x30 #x31 #x32 #x33 #x34 #x35 #x36 #x37
       #x38 #x39 #x3a #x3b #x3c #x3d #x3e #x3f)
      (aref (gbspu-wave-ram spu) (logand addr #xf)))
+    ((#x76 #x77) #xff)
     (otherwise #xff)))
 
 (defun spu-write-memory-at-addr (spu addr val)
@@ -89,6 +90,7 @@
     ((#x30 #x31 #x32 #x33 #x34 #x35 #x36 #x37
       #x38 #x39 #x3a #x3b #x3c #x3d #x3e #x3f)
      (setf (aref (gbspu-wave-ram spu) (logand addr #xf)) val))
+    ((#x76 #x77) ())
     (otherwise ())))
 
 (defun spu-read-sound-channel (spu addr)
