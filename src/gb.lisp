@@ -670,3 +670,12 @@
   "runs the main loop with the global GB"
   (emu-main gb))
 
+(defun start-gb (rom)
+  (let ((gb (make-gb)))
+    (load-cart gb (make-gbcart-from-rom rom))
+    (run gb)))
+(defun start-cgb (rom)
+  (let ((cgb (make-cgb)))
+    (load-cart cgb (make-gbcart-from-rom rom))
+    (run cgb)))
+
