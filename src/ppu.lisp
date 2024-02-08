@@ -171,7 +171,7 @@
                  (#x52 (setf (cgbppu-hdma12 ppu) (logior (logand (cgbppu-hdma12 ppu) #xff00) (logand val #xf0))))
                  (#x53 (setf (cgbppu-hdma34 ppu) (logior (logand (cgbppu-hdma34 ppu) #x00ff) (+ (logand (ash val 8) #x1f00) #x8000))))
                  (#x54 (setf (cgbppu-hdma34 ppu) (logior (logand (cgbppu-hdma34 ppu) #xff00) (logand val #xf0))))
-                 (#x55 (setf (cgbppu-hdma-len ppu) (ash (logand (+ val 1) #x7f) 4)
+                 (#x55 (setf (cgbppu-hdma-len ppu) (ash (+ (logand val #x7f) 1) 4)
                              (cgbppu-vram-dma-type ppu) (if (= (cgbppu-vram-dma-type ppu) 0)
                                                             (if (= (logand val #x80) #x80) 2 1)
                                                             (if (= (logand val #x80) #x00) 0)))
@@ -279,7 +279,8 @@
                            :is-cgb? (cgbppu-p ppu)))
     :start-x (- (cadr sprite) 8)
     :xflip? (> (logand (cadddr sprite) #x20) 0)
-    :priority (ash (cadddr sprite) -7)
+    :priority (- (if (or (not (cgbppu-p ppu)) (cgbppu-opri ppu)) (- +screen-pixel-width+ (cadr sprite)) 1)
+                 (if (= (ash (cadddr sprite) -7) 1) 200 0))
     :cram (if (cgbppu-p ppu) (cgbppu-obj-cram ppu))
     :bg-buffer (gbppu-bg-buffer ppu)
     :palette (if (cgbppu-p ppu)
@@ -297,8 +298,7 @@
       (and (> colorval #x00)
            (or (null bg-buffer-val)
                (= (cadr bg-buffer-val) #x00)
-               (and (= (car bg-buffer-val) #x00)
-               (= priority #x00))))))
+               (> priority (car bg-buffer-val))))))
 
 (defun get-color-vals (colorbytes)
   (loop for i from 0 to 7
@@ -371,7 +371,7 @@
             :xflip? (and (cgbppu-p ppu) (> (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x20) 0))
             :bg-buffer (gbppu-bg-buffer ppu)
             :is-background? t
-            :priority (if (and (cgbppu-p ppu) (= (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x80) #x80)) 1 0)
+            :priority (if (and (cgbppu-p ppu) (= (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x80) #x80)) 1000 0)
             :cram (if (cgbppu-p ppu) (cgbppu-bg-cram ppu))
             :palette (if (cgbppu-p ppu) (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x7) (gbppu-bg-palette ppu))))))
 
@@ -404,7 +404,7 @@
                         (> (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x20) 0))
               :bg-buffer (gbppu-bg-buffer ppu)
               :is-background? t
-              :priority (if (and (cgbppu-p ppu) (= (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x80) #x80)) 1 0)
+              :priority (if (and (cgbppu-p ppu) (= (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x80) #x80)) 1000 0)
               :cram (if (cgbppu-p ppu) (cgbppu-bg-cram ppu))
               :palette (if (cgbppu-p ppu)
                            (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x7)
@@ -428,11 +428,11 @@
           (start-src (cgbppu-hdma12 ppu))
           (start-dest (cgbppu-hdma34 ppu)))
       (when (> len 0)
-        (loop for i from 0 to transfer-bytes
+        (loop for i from 0 to (- transfer-bytes 1)
               for src = (+ start-src i)
               for dest = (+ start-dest i)
               do (write-memory-at-addr gb dest (read-memory-at-addr gb src)))
-        (if (< (- len transfer-bytes) 0)
+        (if (<= (- len transfer-bytes) 0)
             (setf (cgbppu-hdma-len ppu)  #x00
                   (cgbppu-vram-dma-type ppu) 0
                   (cgbppu-hdma12 ppu) #xffff
@@ -449,11 +449,11 @@
           (start-src (cgbppu-hdma12 ppu))
           (start-dest (cgbppu-hdma34 ppu)))
       (when (> len 0)
-        (loop for i from 0 to transfer-bytes
+        (loop for i from 0 to (- transfer-bytes 1)
               for src = (+ start-src i)
               for dest = (+ start-dest i)
               do (write-memory-at-addr gb dest (read-memory-at-addr gb src)))
-        (if (< (- len transfer-bytes) 0)
+        (if (<= (- len transfer-bytes) 0)
             (setf (cgbppu-hdma-len ppu)  #x00
                   (cgbppu-vram-dma-type ppu) 0
                   (cgbppu-hdma12 ppu) #xffff
@@ -503,7 +503,7 @@
                         (* (floor row 8) +tilemap-tile-width+) (floor col 8))))
           (render-tile-line
             framebuffer
-            (* row +screen-pixel-width+)
+            (* row +tilemap-pixel-width+)
             (get-color-bytes ppu (+ (if (and
                                           (cgbppu-p ppu)
                                           (= (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x8) #x8))

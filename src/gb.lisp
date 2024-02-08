@@ -645,7 +645,7 @@
                   (when (not (gb-stopped? gb))
                     (loop while (step-cpu cpu gb)
                           for cyc = 0 then (+ cyc (gbcpu-clock cpu))
-                          while (< cyc (cycles-per-frame +default-cpu-speed+)) do
+                          while (< cyc (cycles-per-frame (gbcpu-cpu-speed cpu))) do
                     (let ((cycles (/ (gbcpu-clock cpu) (if (and (cgb-p gb) (cgb-is-double-speed? gb)) 2 1))))
                       (step-ppu ppu gb cycles)
                       (step-spu spu (gbcpu-clock cpu) (cycles-per-sample (gbcpu-cpu-speed cpu)) (cycles-frame-seq-step (gbcpu-cpu-speed cpu)))
@@ -656,11 +656,11 @@
                 (let ((now (get-internal-real-time)))
                   (when (< (- now last-frame-time) +time-units-per-frame+)
                     (when *debug*
-                    (format t "timeunits since last frame ~A, Sleeping for: ~A~%"
-                            (- now last-frame-time)
-                      (coerce (/ (- +time-units-per-frame+
-                            (- now last-frame-time))
-                         internal-time-units-per-second) 'float)))
+                      (format t "timeunits since last frame ~A, Sleeping for: ~A~%"
+                              (- now last-frame-time)
+                              (coerce (/ (- +time-units-per-frame+
+                                            (- now last-frame-time))
+                                         internal-time-units-per-second) 'float)))
                     (sleep
                       (/ (- +time-units-per-frame+
                             (- now last-frame-time))
