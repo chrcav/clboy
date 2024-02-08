@@ -35,7 +35,7 @@
   "main PPU struct for handling video output"
   (framebuffer (static-vectors:make-static-vector (* +screen-pixel-width+ +screen-pixel-height+ 3)))
   (framebuffer-a (static-vectors:make-static-vector (* +screen-pixel-width+ +screen-pixel-height+ 4)))
-  (bg-buffer (make-array (* +tilemap-pixel-width+ +tilemap-pixel-height+) :initial-element 0 :element-type '(unsigned-byte 8)))
+  (bg-buffer (make-array (* +tilemap-pixel-width+ +tilemap-pixel-height+) :initial-element ()))
   (cycles 0)
   (cur-line 0)
   (cur-line-comp 0)
@@ -292,11 +292,13 @@
   (list (ppu-read-memory-at-addr ppu tile-row-addr)
         (ppu-read-memory-at-addr ppu (+ tile-row-addr 1))))
 
-(defun render-pixel? (colorval bg-buffer &key (buffer-pos 0) (priority 0) (is-background? nil))
+(defun render-pixel? (colorval bg-buffer-val &key (priority 0) (is-background? nil))
   (or is-background?
       (and (> colorval #x00)
-           (or (= (aref bg-buffer buffer-pos) #x00)
-               (= priority #x00)))))
+           (or (null bg-buffer-val)
+               (= (cadr bg-buffer-val) #x00)
+               (and (= (car bg-buffer-val) #x00)
+               (= priority #x00))))))
 
 (defun get-color-vals (colorbytes)
   (loop for i from 0 to 7
@@ -318,13 +320,12 @@
                (mapcan #'(lambda (col colorval)
                            (if (not (null col)) 
                                (if (render-pixel? colorval
-                                                  bg-buffer
-                                                  :buffer-pos (+ row-start-pixel-pos col)
+                                                  (aref bg-buffer (+ row-start-pixel-pos col))
                                                   :priority priority
                                                   :is-background? is-background?)
                                    (progn
                                      ;TODO need to find a better way to track transparancy and priority
-                                     (setf (aref bg-buffer (+ row-start-pixel-pos col)) colorval)
+                                     (setf (aref bg-buffer (+ row-start-pixel-pos col)) (list priority colorval))
                                      (if cram
                                          (ppu-get-palette-color cram palette colorval)
                                          (aref *colors* (logand (ash palette (* colorval -2)) 3))))
@@ -370,6 +371,7 @@
             :xflip? (and (cgbppu-p ppu) (> (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x20) 0))
             :bg-buffer (gbppu-bg-buffer ppu)
             :is-background? t
+            :priority (if (and (cgbppu-p ppu) (= (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x80) #x80)) 1 0)
             :cram (if (cgbppu-p ppu) (cgbppu-bg-cram ppu))
             :palette (if (cgbppu-p ppu) (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x7) (gbppu-bg-palette ppu))))))
 
@@ -402,6 +404,7 @@
                         (> (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x20) 0))
               :bg-buffer (gbppu-bg-buffer ppu)
               :is-background? t
+              :priority (if (and (cgbppu-p ppu) (= (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x80) #x80)) 1 0)
               :cram (if (cgbppu-p ppu) (cgbppu-bg-cram ppu))
               :palette (if (cgbppu-p ppu)
                            (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x7)
