@@ -1,6 +1,7 @@
 
 (in-package :clboy)
 
+(defconstant +dots-per-second+ +default-cpu-speed+)
 (defconstant +oam-duration-dots+ 80)
 (defconstant +vblank-duration-dots+ 4560)
 (defconstant +hblank-duration-dots+ 204)
@@ -36,7 +37,7 @@
   (framebuffer (static-vectors:make-static-vector (* +screen-pixel-width+ +screen-pixel-height+ 3)))
   (framebuffer-a (static-vectors:make-static-vector (* +screen-pixel-width+ +screen-pixel-height+ 4)))
   (bg-buffer (make-array (* +tilemap-pixel-width+ +tilemap-pixel-height+) :initial-element ()))
-  (cycles 0)
+  (dots 0)
   (cur-line 0)
   (cur-line-comp 0)
   (oam (make-array #x100 :initial-element 0 :element-type '(unsigned-byte 8)))
@@ -71,7 +72,9 @@
   (opri #x00 :type (unsigned-byte 8)))
 
 
-(defparameter *colors* #(#xff #x7f #xf7 #x5e #x8c #x31 #x00  #x00))
+(defparameter *colors* #(#xff #x7f #xf7 #x5e #x8c #x31 #x00 #x00))
+
+(defun ppu-cycles-per-dot (cpu-speed) (floor cpu-speed +dots-per-second+))
 
 (defun ppu-get-palette-color (&key (cram *colors*) (palette 0) (index 0))
     (ppu-get-cram-palette-color cram palette index))
@@ -410,8 +413,8 @@
                            (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x7)
                            (gbppu-bg-palette ppu)))))))
 
-;;TODO should only transfer data based on the cycles that have passed for all dma transfers
-(defun maybe-do-oam-dma (ppu gb cycles)
+;;TODO should only transfer data based on the dots that have passed for all dma transfers
+(defun maybe-do-oam-dma (ppu gb dots)
   "checks for DMA and processes copying memory into OAM"
   (when (< (gbppu-do-oam-dma ppu) #xe0)
     (loop for src = (ash (gbppu-do-oam-dma ppu) 8) then (+ src 1)
@@ -420,11 +423,11 @@
           do (write-memory-at-addr gb dest (read-memory-at-addr gb src)))
     (setf (gbppu-do-oam-dma ppu) #xff)))
 
-(defun maybe-do-gen-dma (ppu gb cycles)
+(defun maybe-do-gen-dma (ppu gb dots)
   "checks for general purpose vram DMA and processes copying memory into VRAM"
   (when (= (cgbppu-vram-dma-type ppu) 1)
     (let ((len (cgbppu-hdma-len ppu))
-          (transfer-bytes (* cycles 2))
+          (transfer-bytes (* dots 2))
           (start-src (cgbppu-hdma12 ppu))
           (start-dest (cgbppu-hdma34 ppu)))
       (when (> len 0)
@@ -441,11 +444,11 @@
                   (cgbppu-hdma12 ppu) (+ start-src transfer-bytes)
                   (cgbppu-hdma34 ppu) (+ start-dest transfer-bytes)))))))
 
-(defun maybe-do-h-dma (ppu gb cycles)
+(defun maybe-do-h-dma (ppu gb dots)
   "checks for hblank vram DMA and processes copying memory into VRAM"
   (when (= (cgbppu-vram-dma-type ppu) 2)
     (let ((len (cgbppu-hdma-len ppu))
-          (transfer-bytes (* cycles 2))
+          (transfer-bytes (* dots 2))
           (start-src (cgbppu-hdma12 ppu))
           (start-dest (cgbppu-hdma34 ppu)))
       (when (> len 0)
@@ -469,7 +472,7 @@
 
 (defun ppu-mode-transition (ppu gb mode)
   "transitions PPU to MODE 0-3 triggers interrupt if enabled"
-  (setf (gbppu-cycles ppu) 0)
+  (setf (gbppu-dots ppu) 0)
   (setf (gbppu-mode ppu) mode)
   (if (stat-int-enabled-for-mode? (gbppu-stat ppu) mode) (set-interrupt-flag gb 1)))
 
@@ -538,22 +541,22 @@
   (sdl2:render-copy renderer texture :dest-rect rect)
   (sdl2:render-present renderer))
 
-(defun step-ppu (ppu gb cycles)
-  "handles updating the PPU mode and drawing to a texture when the defined number of cycles have
+(defun step-ppu (ppu gb dots)
+  "handles updating the PPU mode and drawing to a texture when the defined number of dots have
   elapsed. transitions the PPU through the modes and processes vram."
   (when (and (not (gbppu-enabled? ppu))
-             (> (gbppu-cycles ppu) 0))
-    (setf (gbppu-cycles ppu) 0)
+             (> (gbppu-dots ppu) 0))
+    (setf (gbppu-dots ppu) 0)
     (ppu-mode-transition ppu gb 0))
   (when (gbppu-enabled? ppu)
-    (incf (gbppu-cycles ppu) cycles)
-    (maybe-do-oam-dma ppu gb cycles)
-    (if (cgbppu-p ppu) (maybe-do-gen-dma ppu gb cycles))
+    (incf (gbppu-dots ppu) dots)
+    (maybe-do-oam-dma ppu gb dots)
+    (if (cgbppu-p ppu) (maybe-do-gen-dma ppu gb dots))
     (check-ly-lyc ppu gb)
     (case (gbppu-mode ppu)
       ; in Hblank state
-      (0 (when (> (gbppu-cycles ppu) +hblank-duration-dots+)
-           ;TODO 8 should be replaced with cycles to be more accurate
+      (0 (when (> (gbppu-dots ppu) +hblank-duration-dots+)
+           ;TODO 8 should be replaced with dots to be more accurate
            (if (cgbppu-p ppu) (maybe-do-h-dma ppu gb 8))
            (incf (gbppu-cur-line ppu))
            (if (> (gbppu-cur-line ppu) (- +screen-pixel-height+ 1))
@@ -563,16 +566,16 @@
                     )
              (ppu-mode-transition ppu gb 2))))
       ; in Vblank state
-      (1 (when (> (gbppu-cycles ppu) +vblank-duration-dots+)
+      (1 (when (> (gbppu-dots ppu) +vblank-duration-dots+)
            (incf (gbppu-cur-line ppu))
            (when (> (gbppu-cur-line ppu) (+ +screen-pixel-height+ 9))
              (setf (gbppu-cur-line ppu) 0)
              (ppu-mode-transition ppu gb 2))))
       ; in OAM state
-      (2 (when (> (gbppu-cycles ppu) +oam-duration-dots+)
+      (2 (when (> (gbppu-dots ppu) +oam-duration-dots+)
            (ppu-mode-transition ppu gb 3)))
       ; in VRAM Read state
-      (3 (when (> (gbppu-cycles ppu) +draw-duration-dots+)
+      (3 (when (> (gbppu-dots ppu) +draw-duration-dots+)
            (render-scanline ppu)
            (ppu-mode-transition ppu gb 0)))))
   t)
