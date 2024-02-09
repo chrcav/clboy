@@ -71,9 +71,9 @@
   (opri #x00 :type (unsigned-byte 8)))
 
 
-(defparameter *colors* #((255 255 255) (192 192 192) (96 96 96) (0  0  0)))
+(defparameter *colors* #(#xff #x7f #xf7 #x5e #x8c #x31 #x00  #x00))
 
-(defun ppu-get-palette-color (cram palette index)
+(defun ppu-get-palette-color (&key (cram *colors*) (palette 0) (index 0))
     (ppu-get-cram-palette-color cram palette index))
 
 (defun ppu-get-cram-palette-color (cram palette index)
@@ -316,9 +316,9 @@
   "adds a row of pixels from the visible portion of a tile corresponding to the scanline
   location."
     (when (< start-x framebuffer-width)
-      (replace framebuffer 
+      (replace framebuffer
                (mapcan #'(lambda (col colorval)
-                           (if (not (null col)) 
+                           (if (not (null col))
                                (if (render-pixel? colorval
                                                   (aref bg-buffer (+ row-start-pixel-pos col))
                                                   :priority priority
@@ -327,8 +327,8 @@
                                      ;TODO need to find a better way to track transparancy and priority
                                      (setf (aref bg-buffer (+ row-start-pixel-pos col)) (list priority colorval))
                                      (if cram
-                                         (ppu-get-palette-color cram palette colorval)
-                                         (aref *colors* (logand (ash palette (* colorval -2)) 3))))
+                                         (ppu-get-palette-color :cram cram :palette palette :index colorval)
+                                         (ppu-get-palette-color :index (logand (ash palette (* colorval -2)) 3))))
                                    (loop for n from 0 to 2
                                          for framebuf-pos = (+ (* (+ row-start-pixel-pos col) 3) n)
                                          collect (aref framebuffer framebuf-pos)))))
