@@ -147,9 +147,9 @@
   "writes memory from PPU at ADDR which can be vram, oam, or PPU registers to VAL"
   (ecase (logand addr #xf000)
     ((#x0000 #x1000 #x2000 #x3000)
-      (setf (aref (gbppu-vram ppu) (logand addr #x3fff)) val))
+     (setf (aref (gbppu-vram ppu) (logand addr #x3fff)) val))
     ((#x8000 #x9000)
-      (setf (aref (gbppu-vram ppu) (+ (logand addr #x1fff) (if (= (gbppu-vram-bank ppu) #x01) #x2000 #x0000))) val))
+     (setf (aref (gbppu-vram ppu) (+ (logand addr #x1fff) (if (= (gbppu-vram-bank ppu) #x01) #x2000 #x0000))) val))
     (#xf000
      (case (logand addr #x0f00)
        (#xe00 (if (< addr #xfea0) (setf (aref (gbppu-oam ppu) (logand addr #xff)) val)))
@@ -178,11 +178,12 @@
                              (cgbppu-vram-dma-type ppu) (if (= (cgbppu-vram-dma-type ppu) 0)
                                                             (if (= (logand val #x80) #x80) 2 1)
                                                             (if (= (logand val #x80) #x00) 0)))
-                  (format t "hdma transfer type ~A requested: from x~X to x~X len ~A bytes~%"
-                          (cgbppu-vram-dma-type ppu)
-                          (cgbppu-hdma12 ppu)
-                          (cgbppu-hdma34 ppu)
-                          (cgbppu-hdma-len ppu)))
+                  (when *debug*
+                    (format t "hdma transfer type ~A requested: from x~X to x~X len x~X bytes~%"
+                            (cgbppu-vram-dma-type ppu)
+                            (cgbppu-hdma12 ppu)
+                            (cgbppu-hdma34 ppu)
+                            (cgbppu-hdma-len ppu))))
                  (#x68 (setf (cgbppu-bcps-bgpi ppu) val))
                  (#x69 (setf (aref (cgbppu-bg-cram ppu) (logand (cgbppu-bcps-bgpi ppu) #x3f)) val
                              (cgbppu-bcps-bgpi ppu) (if (> (cgbppu-bcps-bgpi ppu) #x7f) (+ (cgbppu-bcps-bgpi ppu) 1) (cgbppu-bcps-bgpi ppu))))
@@ -216,7 +217,7 @@
           (#x48 (gbppu-obj-palette1 ppu))
           (#x4a (gbppu-wy ppu))
           (#x4b (gbppu-wx ppu))
-          (#x4f (logior (gbppu-vram-bank ppu) #xef))
+          (#x4f (logior (gbppu-vram-bank ppu) #xfe))
           ((#x51 #x52 #x53 #x54 #x55 #x68 #x69 #x6a #x6b #x6c)
            (if (cgbppu-p ppu)
                (case (logand addr #x00ff)
@@ -251,7 +252,7 @@
           while (< addr #xfea0)
           for sprite = (read-sprite ppu addr)
           when (sprite-overlaps-scanline? sprite row (ppulcdc-sprite-height (gbppu-lcdc ppu)))
-          do (add-sprite-to-ppu-framebuffer ppu row sprite))))
+          do (add-sprite-to-ppu-framebuffer ppu row sprite (- addr #xfe00)))))
 
 (defun calc-sprite-y-offset (row sprite-y)
    (- row (- sprite-y 16)))
@@ -268,7 +269,7 @@
 (defun calc-sprite-tile-no (ppu sprite)
   (if (= (ppulcdc-sprite-height (gbppu-lcdc ppu)) 16) (logand (caddr sprite) #xfe) (caddr sprite)))
 
-(defun add-sprite-to-ppu-framebuffer (ppu row sprite)
+(defun add-sprite-to-ppu-framebuffer (ppu row sprite pos)
   "adds a row of pixels from the visible portion of a sprite corresponding to the scanline
   location."
   (render-tile-line
@@ -282,8 +283,9 @@
                            :is-cgb? (cgbppu-p ppu)))
     :start-x (- (cadr sprite) 8)
     :xflip? (> (logand (cadddr sprite) #x20) 0)
-    :priority (- (if (or (not (cgbppu-p ppu)) (cgbppu-opri ppu)) (- +screen-pixel-width+ (cadr sprite)) 1)
-                 (if (= (ash (cadddr sprite) -7) 1) 200 0))
+    :priority (- 1000
+                 (if (or (not (cgbppu-p ppu)) (cgbppu-opri ppu)) (cadr sprite) pos)
+                 (if (= (ash (cadddr sprite) -7) 1) 1000 0))
     :cram (if (cgbppu-p ppu) (cgbppu-obj-cram ppu))
     :bg-buffer (gbppu-bg-buffer ppu)
     :palette (if (cgbppu-p ppu)
@@ -341,10 +343,20 @@
                        (maybe-reverse (get-color-vals colorbytes) :rev? xflip?))
                :start1 (* (+ row-start-pixel-pos (if (< start-x 0) 0 start-x)) 3))))
 
-(defun calc-bg-tile-no (ppu addr)
+(defun calc-bg-tile-addr (ppu tilemap-addr tile-yoffset)
+  (+ (if (and
+           (cgbppu-p ppu)
+           (= (logand (ppu-read-memory-at-addr ppu (+ tilemap-addr #x2000)) #x8) #x8))
+         #x2000
+         #x0000)
+     (ppulcdc-tiledata-area (gbppu-lcdc ppu))
+     (* (calc-bg-tile-no ppu tilemap-addr) #x10)
+     (* (mod tile-yoffset 8) 2)))
+
+(defun calc-bg-tile-no (ppu tilemap-addr)
   (if (= (ppulcdc-tiledata-area (gbppu-lcdc ppu)) #x0000)
-      (ppu-read-memory-at-addr ppu addr)
-      (make-signed-from-unsigned (ppu-read-memory-at-addr ppu addr))))
+      (ppu-read-memory-at-addr ppu tilemap-addr)
+      (make-signed-from-unsigned (ppu-read-memory-at-addr ppu tilemap-addr))))
 
 (defun add-window-to-ppu-framebuffer (ppu row)
   "adds a row of pixels from the visible portion of the window corresponding to the scanline
@@ -354,29 +366,23 @@
              (>= (gbppu-wy ppu) 0) (< (gbppu-wy ppu) (+ +screen-pixel-height+ 7))
              (>= (gbppu-wx ppu) 0) (< (gbppu-wx ppu) +screen-pixel-width+))
     (loop for col = (- (gbppu-wx ppu) 7) then (+ col 8)
-          for tilemapx from 0 to 31
-          for addr = (+ (ppulcdc-win-tilemap-area (gbppu-lcdc ppu))
-                        (* (floor (- row (gbppu-wy ppu)) 8) 32) tilemapx)
+          for tilemapx from 0 to (- +tilemap-tile-width+ 1)
+          for tilemap-addr = (+ (ppulcdc-win-tilemap-area (gbppu-lcdc ppu))
+                                (* (floor (- row (gbppu-wy ppu)) 8) +tilemap-tile-width+)
+                                tilemapx)
           when (and (>= col 0) (< col +screen-pixel-width+))
           do
           (render-tile-line
             (gbppu-framebuffer ppu)
             (* row +screen-pixel-width+)
-            (get-color-bytes ppu (+ (if (and
-                                          (cgbppu-p ppu)
-                                          (= (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x8) #x8))
-                                        #x2000
-                                        #x0000)
-                                    (ppulcdc-tiledata-area (gbppu-lcdc ppu))
-                                    (* (calc-bg-tile-no ppu addr) #x10)
-                                    (* (mod (- row (gbppu-wy ppu)) 8) 2)))
+            (get-color-bytes ppu (calc-bg-tile-addr ppu tilemap-addr (- row (gbppu-wy ppu))))
             :start-x col
-            :xflip? (and (cgbppu-p ppu) (> (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x20) 0))
+            :xflip? (and (cgbppu-p ppu) (> (logand (ppu-read-memory-at-addr ppu (+ tilemap-addr #x2000)) #x20) 0))
             :bg-buffer (gbppu-bg-buffer ppu)
             :is-background? t
-            :priority (if (and (cgbppu-p ppu) (= (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x80) #x80)) 1000 0)
+            :priority (if (and (cgbppu-p ppu) (= (logand (ppu-read-memory-at-addr ppu (+ tilemap-addr #x2000)) #x80) #x80)) 10000 100)
             :cram (if (cgbppu-p ppu) (cgbppu-bg-cram ppu))
-            :palette (if (cgbppu-p ppu) (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x7) (gbppu-bg-palette ppu))))))
+            :palette (if (cgbppu-p ppu) (logand (ppu-read-memory-at-addr ppu (+ tilemap-addr #x2000)) #x7) (gbppu-bg-palette ppu))))))
 
 (defun add-background-to-ppu-framebuffer (ppu row)
   "adds a row of pixels from the visible portion of the background corresponding to the scanline
@@ -385,32 +391,25 @@
     (let ((yoffset (+ row (gbppu-scy ppu))))
       (loop for xoffset = (gbppu-scx ppu) then (+ xoffset 8)
             for col = (- (mod (gbppu-scx ppu) 8)) then (+ col 8)
-            for addr = (+ (ppulcdc-bg-tilemap-area (gbppu-lcdc ppu))
-                          (mod (* (floor yoffset 8) +tilemap-tile-width+)
-                               (* +tilemap-tile-width+ +tilemap-tile-height+))
-                          (mod (floor xoffset 8) +tilemap-tile-width+))
+            for tilemap-addr = (+ (ppulcdc-bg-tilemap-area (gbppu-lcdc ppu))
+                                  (mod (* (floor yoffset 8) +tilemap-tile-width+)
+                                       (* +tilemap-tile-width+ +tilemap-tile-height+))
+                                  (mod (floor xoffset 8) +tilemap-tile-width+))
             while (< col +screen-pixel-width+) do
             (render-tile-line
               (gbppu-framebuffer ppu)
               (* row +screen-pixel-width+)
-              (get-color-bytes ppu (+ (if (and
-                                            (cgbppu-p ppu)
-                                            (= (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x8) #x8))
-                                          #x2000
-                                          #x0000)
-                                      (ppulcdc-tiledata-area (gbppu-lcdc ppu))
-                                      (* (calc-bg-tile-no ppu addr) #x10)
-                                      (* (mod yoffset 8) 2)))
+              (get-color-bytes ppu (calc-bg-tile-addr ppu tilemap-addr yoffset))
               :start-x col
               :xflip? (and
                         (cgbppu-p ppu)
-                        (> (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x20) 0))
+                        (> (logand (ppu-read-memory-at-addr ppu (+ tilemap-addr #x2000)) #x20) 0))
               :bg-buffer (gbppu-bg-buffer ppu)
               :is-background? t
-              :priority (if (and (cgbppu-p ppu) (= (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x80) #x80)) 1000 0)
+              :priority (if (and (cgbppu-p ppu) (= (logand (ppu-read-memory-at-addr ppu (+ tilemap-addr #x2000)) #x80) #x80)) 10000 100)
               :cram (if (cgbppu-p ppu) (cgbppu-bg-cram ppu))
               :palette (if (cgbppu-p ppu)
-                           (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x7)
+                           (logand (ppu-read-memory-at-addr ppu (+ tilemap-addr #x2000)) #x7)
                            (gbppu-bg-palette ppu)))))))
 
 ;;TODO should only transfer data based on the dots that have passed for all dma transfers
@@ -434,7 +433,8 @@
         (loop for i from 0 to (- transfer-bytes 1)
               for src = (+ start-src i)
               for dest = (+ start-dest i)
-              do (write-memory-at-addr gb dest (read-memory-at-addr gb src)))
+              while (< i len)
+              do (ppu-write-memory-at-addr ppu dest (read-memory-at-addr gb src)))
         (if (<= (- len transfer-bytes) 0)
             (setf (cgbppu-hdma-len ppu)  #x00
                   (cgbppu-vram-dma-type ppu) 0
@@ -455,7 +455,8 @@
         (loop for i from 0 to (- transfer-bytes 1)
               for src = (+ start-src i)
               for dest = (+ start-dest i)
-              do (write-memory-at-addr gb dest (read-memory-at-addr gb src)))
+              while (< i len)
+              do (ppu-write-memory-at-addr ppu dest (read-memory-at-addr gb src)))
         (if (<= (- len transfer-bytes) 0)
             (setf (cgbppu-hdma-len ppu)  #x00
                   (cgbppu-vram-dma-type ppu) 0
@@ -485,14 +486,14 @@
     (otherwise nil)))
 
 
-(defun render-scanline (ppu)
+(defun render-scanline (ppu row)
   "processes the background, window, and sprites based on lcdc flags and video memory"
   (when (ppulcdc-bgwin-enabled? (gbppu-lcdc ppu)) ; TODO this should trigger the background losing priority
-    (add-background-to-ppu-framebuffer ppu (gbppu-cur-line ppu))
+    (add-background-to-ppu-framebuffer ppu row)
     (when (ppulcdc-window-enabled? (gbppu-lcdc ppu))
-      (add-window-to-ppu-framebuffer ppu (gbppu-cur-line ppu))))
+      (add-window-to-ppu-framebuffer ppu row)))
   (when (ppulcdc-obj-enabled? (gbppu-lcdc ppu))
-    (add-sprites-to-ppu-framebuffer ppu (gbppu-cur-line ppu))))
+    (add-sprites-to-ppu-framebuffer ppu row)))
 
 (defun render-full-background (ppu)
   "Provides a way to draw the entire 256x256 background stored in the tilemap."
@@ -502,26 +503,19 @@
           when (< row +tilemap-pixel-height+) do
           (loop for col = 0 then (+ col 8)
                 while (< col +tilemap-pixel-width+) do
-        (let ((addr (+ (ppulcdc-bg-tilemap-area (gbppu-lcdc ppu))
+        (let ((tilemap-addr (+ (ppulcdc-bg-tilemap-area (gbppu-lcdc ppu))
                         (* (floor row 8) +tilemap-tile-width+) (floor col 8))))
           (render-tile-line
             framebuffer
             (* row +tilemap-pixel-width+)
-            (get-color-bytes ppu (+ (if (and
-                                          (cgbppu-p ppu)
-                                          (= (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x8) #x8))
-                                        #x2000
-                                        #x0000)
-                                    (ppulcdc-tiledata-area (gbppu-lcdc ppu))
-                                    (* (calc-bg-tile-no ppu addr) 16)
-                                    (* (mod row 8) 2)))
+            (get-color-bytes ppu (calc-bg-tile-addr ppu tilemap-addr row))
             :start-x col
-            :cram (if (cgbppu-p ppu) (cgbppu-obj-cram ppu))
+            :cram (if (cgbppu-p ppu) (cgbppu-bg-cram ppu))
             :bg-buffer (gbppu-bg-buffer ppu)
             :is-background? t
             :framebuffer-width +tilemap-pixel-width+
             :palette (if (cgbppu-p ppu)
-                         (logand (ppu-read-memory-at-addr ppu (+ addr #x2000)) #x7)
+                         (logand (ppu-read-memory-at-addr ppu (+ tilemap-addr #x2000)) #x7)
                          (gbppu-bg-palette ppu))))))
     (sdl2:update-texture
       texture
@@ -531,12 +525,41 @@
     (sdl2:render-copy (gbppu-renderer ppu) texture)
     (sdl2:render-present (gbppu-renderer ppu))))
 
+(defun render-full-tiledata (ppu)
+  "Provides a way to draw the entire 256x256 background stored in the tilemap."
+  (let ((texture (sdl2:create-texture (gbppu-renderer ppu) :rgb24 :streaming +tilemap-pixel-width+ +tilemap-pixel-height+))
+        (framebuffer (static-vectors:make-static-vector (* +tilemap-pixel-width+ +tilemap-pixel-height+ 3))))
+    (loop for addr = 0 then (+ addr 2)
+          for line-start = (+ (* (mod (floor addr 2) #x100) +tilemap-pixel-width+) (* (floor addr #x200) 8))
+          while (< addr (if (cgbppu-p ppu) #x4000 #x2000))
+          when (< line-start (* +tilemap-pixel-height+ +tilemap-pixel-width+)) do
+          (render-tile-line
+            framebuffer
+            line-start
+            (get-color-bytes ppu addr)
+            :start-x 0
+            :cram (if (cgbppu-p ppu) (cgbppu-bg-cram ppu))
+            :bg-buffer (gbppu-bg-buffer ppu)
+            :is-background? t
+            :framebuffer-width +tilemap-pixel-width+
+            :palette (if (cgbppu-p ppu)
+                         0
+                         (gbppu-bg-palette ppu))))
+    (sdl2:update-texture
+      texture
+      (cffi:null-pointer)
+      (static-vectors:static-vector-pointer framebuffer)
+      (* +tilemap-pixel-width+ 3))
+    (sdl2:render-copy (gbppu-renderer ppu) texture)
+    (sdl2:render-present (gbppu-renderer ppu))))
+
 (defun update-screen (ppu renderer texture rect)
   "takes the current framebuffer and copies it into the TEXTURE"
   (sdl2:update-texture
     texture
     (cffi:null-pointer)
-    (static-vectors:static-vector-pointer (gbppu-framebuffer ppu)) (* +screen-pixel-width+ *scale*))
+    (static-vectors:static-vector-pointer (gbppu-framebuffer ppu))
+    (* +screen-pixel-width+ *scale*))
   (sdl2:render-clear renderer)
   (sdl2:render-copy renderer texture :dest-rect rect)
   (sdl2:render-present renderer))
@@ -576,6 +599,30 @@
            (ppu-mode-transition ppu gb 3)))
       ; in VRAM Read state
       (3 (when (> (gbppu-dots ppu) +draw-duration-dots+)
-           (render-scanline ppu)
+           (render-scanline ppu (gbppu-cur-line ppu))
            (ppu-mode-transition ppu gb 0)))))
   t)
+
+(defun ppu-dump-vram (ppu)
+  (ppu-dump-vram-range ppu 0 (if (cgbppu-p ppu) #x3fff #x1fff)))
+(defun ppu-dump-vram-range (ppu start end)
+  (loop for block = start then (+ block #x10)
+        while (< block end)
+        do
+        (format t "x~X" block)
+        (loop for addr from block to (+ block #xf)
+                 do
+                 (format t " x~X" (ppu-read-memory-at-addr ppu addr)))
+        (format t "~%")))
+
+(defun ppu-dump-tilemap-bytes (ppu)
+  (ppu-dump-tilemap-bytes-range ppu #x1800 #x1fff))
+(defun ppu-dump-tilemap-bytes-range (ppu start end)
+  (format t "~A"
+          (loop for addr from start to end
+                collect (list (format nil "~X" (ppu-read-memory-at-addr ppu addr))
+                              (format nil "~X" (if (cgbppu-p ppu) (ppu-read-memory-at-addr ppu (+ addr #x2000)) 0))))))
+(defun ppu-dump-bg-cram (ppu)
+  (if (cgbppu-p ppu) (format t "~A~%" (cgbppu-bg-cram ppu))))
+(defun ppu-dump-obj-cram (ppu)
+  (if (cgbppu-p ppu) (format t "~A~%" (cgbppu-obj-cram ppu))))

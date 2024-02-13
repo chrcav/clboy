@@ -467,6 +467,8 @@
     (gb-reset gb))
   (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-b)
     (render-full-background (gb-ppu gb)))
+  (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-t)
+    (render-full-tiledata (gb-ppu gb)))
   (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-w)
     (setf (gbinput-up input) nil))
   (when (sdl2:scancode= (sdl2:scancode-value keysym) :scancode-a)
