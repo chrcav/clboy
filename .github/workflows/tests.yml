@@ -21,6 +21,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: apt update
+        run: sudo apt-get update
       - name: install lisp
         run: sudo apt-get install -y ${{ matrix.lisp }} libsdl2-dev
 
