@@ -351,7 +351,11 @@
          #x0000)
      (ppulcdc-tiledata-area (gbppu-lcdc ppu))
      (* (calc-bg-tile-no ppu tilemap-addr) #x10)
-     (* (mod tile-yoffset 8) 2)))
+     (* (if (and (cgbppu-p ppu)
+                 (> (logand (ppu-read-memory-at-addr ppu (+ tilemap-addr #x2000)) #x40) 0))
+            (- 8 (mod tile-yoffset 8))
+            (mod tile-yoffset 8))
+        2)))
 
 (defun calc-bg-tile-no (ppu tilemap-addr)
   (if (= (ppulcdc-tiledata-area (gbppu-lcdc ppu)) #x0000)
@@ -382,7 +386,9 @@
             :is-background? t
             :priority (if (and (cgbppu-p ppu) (= (logand (ppu-read-memory-at-addr ppu (+ tilemap-addr #x2000)) #x80) #x80)) 10000 100)
             :cram (if (cgbppu-p ppu) (cgbppu-bg-cram ppu))
-            :palette (if (cgbppu-p ppu) (logand (ppu-read-memory-at-addr ppu (+ tilemap-addr #x2000)) #x7) (gbppu-bg-palette ppu))))))
+            :palette (if (cgbppu-p ppu)
+                         (logand (ppu-read-memory-at-addr ppu (+ tilemap-addr #x2000)) #x7)
+                         (gbppu-bg-palette ppu))))))
 
 (defun add-background-to-ppu-framebuffer (ppu row)
   "adds a row of pixels from the visible portion of the background corresponding to the scanline
