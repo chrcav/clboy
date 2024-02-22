@@ -62,7 +62,7 @@
           ))
           (#x60
            (case (logand addr #x000f)
-             ((#x8 #x9 #xa #xb) (ppu-write-memory-at-addr (gb-ppu gb) addr val))
+             ((#x8 #x9 #xa #xb) (ppu-write-memory-at-addr (gb-ppu gb) addr val)) ; CGB PPU palletes
              (otherwise (setf (aref (gb-zero-page gb) (logand addr #xff)) val))))
           (#x70
            (case (logand addr #x000f)

@@ -13,6 +13,12 @@
 (defconstant +tilemap-tile-width+ 32)
 (defconstant +tilemap-tile-height+ 32)
 
+(defstruct ppucram
+  "CGB cram register struct"
+  (auto-inc? nil :type boolean)
+  (index 0)
+  (ram (make-array #x40 :initial-element 0 :element-type '(unsigned-byte 8))))
+
 (defstruct ppulcdc
   "LCDC register struct"
   (byte-rep 0 :type (unsigned-byte 8))
@@ -61,10 +67,8 @@
 
 (defstruct (cgbppu (:include gbppu
                     (vram (make-array #x4000 :initial-element 0 :element-type '(unsigned-byte 8)))))
-  (bg-cram (make-array #x40 :initial-element 0 :element-type '(unsigned-byte 8)))
-  (obj-cram (make-array #x40 :initial-element 0 :element-type '(unsigned-byte 8)))
-  (bcps-bgpi #xff :type (unsigned-byte 8))
-  (ocps-obpi #xff :type (unsigned-byte 8))
+  (bg-cram (make-ppucram))
+  (obj-cram (make-ppucram))
   (hdma12 #x0000 :type (unsigned-byte 16))
   (hdma34 #x0000 :type (unsigned-byte 16))
   (hdma-len #x000 :type (unsigned-byte 12))
@@ -101,6 +105,21 @@
           (cgbppu-hdma34 ppu) #x0000
           (cgbppu-hdma-len ppu) #x000
           (cgbppu-vram-dma-type ppu) 0)))
+
+(defun ppu-write-cram-spec (cram val)
+  (setf (ppucram-auto-inc? cram) (if (> val #x7f) t)
+        (ppucram-index cram) (logand val #x3f)))
+
+(defun ppu-read-cram-spec (cram)
+  (logior (if (ppucram-auto-inc? cram) #x80 #x0)
+          (logand (ppucram-index cram) #x3f)))
+
+(defun ppu-write-cram-data (cram val)
+  (setf (aref (ppucram-ram cram) (logand (ppucram-index cram) #x3f)) val
+        (ppucram-index cram) (if (ppucram-auto-inc? cram) (+ (ppucram-index cram) 1) (ppucram-index cram))))
+
+(defun ppu-read-cram-data (cram)
+  (aref (ppucram-ram cram) (logand (ppu-cram-index cram) #x3f)))
 
 (defun ppu-write-lcdc (ppu val)
   "saves the lcdc byte as a ppulcdc struct in PPU based on VAL"
@@ -184,12 +203,10 @@
                             (cgbppu-hdma12 ppu)
                             (cgbppu-hdma34 ppu)
                             (cgbppu-hdma-len ppu))))
-                 (#x68 (setf (cgbppu-bcps-bgpi ppu) val))
-                 (#x69 (setf (aref (cgbppu-bg-cram ppu) (logand (cgbppu-bcps-bgpi ppu) #x3f)) val
-                             (cgbppu-bcps-bgpi ppu) (if (> (cgbppu-bcps-bgpi ppu) #x7f) (+ (cgbppu-bcps-bgpi ppu) 1) (cgbppu-bcps-bgpi ppu))))
-                 (#x6a (setf (cgbppu-ocps-obpi ppu) val))
-                 (#x6b (setf (aref (cgbppu-obj-cram ppu) (logand (cgbppu-ocps-obpi ppu) #x3f)) val
-                             (cgbppu-ocps-obpi ppu) (if (> (cgbppu-ocps-obpi ppu) #x7f) (+ (cgbppu-ocps-obpi ppu) 1) (cgbppu-ocps-obpi ppu))))
+                 (#x68 (ppu-write-cram-spec (cgbppu-bg-cram ppu) val))
+                 (#x69 (ppu-write-cram-data (cgbppu-bg-cram ppu) val))
+                 (#x6a (ppu-write-cram-spec (cgbppu-obj-cram ppu) val))
+                 (#x6b (ppu-write-cram-data (cgbppu-obj-cram ppu) val))
                  (#x6c (setf (cgbppu-opri ppu) val)))))
           (otherwise ())))))))
 
@@ -223,10 +240,10 @@
                (case (logand addr #x00ff)
                  ((#x51 #x52 #x53 #x54) #xff)
                  (#x55 (if (= (cgbppu-vram-dma-type ppu) 0) #xff (- (ash (cgbppu-hdma-len ppu) -4) 1)))
-                 (#x68 (cgbppu-bcps-bgpi ppu))
-                 (#x69 (aref (cgbppu-bg-cram ppu) (cgbppu-bcps-bgpi ppu)))
-                 (#x6a (cgbppu-ocps-obpi ppu))
-                 (#x6b (aref (cgbppu-obj-cram ppu) (cgbppu-ocps-obpi ppu)))
+                 (#x68 (ppu-read-cram-spec (cgbppu-bg-cram ppu)))
+                 (#x69 (ppu-read-cram-data (cgbppu-bg-cram ppu)))
+                 (#x6a (ppu-read-cram-spec (cgbppu-obj-cram ppu)))
+                 (#x6b (ppu-read-cram-data (cgbppu-obj-cram ppu)))
                  (#x6c (cgbppu-opri ppu)))))
           (otherwise #xff)))))))
 
@@ -286,7 +303,7 @@
     :priority (- 1000
                  (if (or (not (cgbppu-p ppu)) (cgbppu-opri ppu)) (cadr sprite) pos)
                  (if (= (ash (cadddr sprite) -7) 1) 1000 0))
-    :cram (if (cgbppu-p ppu) (cgbppu-obj-cram ppu))
+    :cram (if (cgbppu-p ppu) (ppucram-ram (cgbppu-obj-cram ppu)))
     :bg-buffer (gbppu-bg-buffer ppu)
     :palette (if (cgbppu-p ppu)
                  (logand (cadddr sprite) #x7)
@@ -385,7 +402,7 @@
             :bg-buffer (gbppu-bg-buffer ppu)
             :is-background? t
             :priority (if (and (cgbppu-p ppu) (= (logand (ppu-read-memory-at-addr ppu (+ tilemap-addr #x2000)) #x80) #x80)) 10000 100)
-            :cram (if (cgbppu-p ppu) (cgbppu-bg-cram ppu))
+            :cram (if (cgbppu-p ppu) (ppucram-ram (cgbppu-bg-cram ppu)))
             :palette (if (cgbppu-p ppu)
                          (logand (ppu-read-memory-at-addr ppu (+ tilemap-addr #x2000)) #x7)
                          (gbppu-bg-palette ppu))))))
@@ -413,7 +430,7 @@
               :bg-buffer (gbppu-bg-buffer ppu)
               :is-background? t
               :priority (if (and (cgbppu-p ppu) (= (logand (ppu-read-memory-at-addr ppu (+ tilemap-addr #x2000)) #x80) #x80)) 10000 100)
-              :cram (if (cgbppu-p ppu) (cgbppu-bg-cram ppu))
+              :cram (if (cgbppu-p ppu) (ppucram-ram (cgbppu-bg-cram ppu)))
               :palette (if (cgbppu-p ppu)
                            (logand (ppu-read-memory-at-addr ppu (+ tilemap-addr #x2000)) #x7)
                            (gbppu-bg-palette ppu)))))))
@@ -516,7 +533,7 @@
             (* row +tilemap-pixel-width+)
             (get-color-bytes ppu (calc-bg-tile-addr ppu tilemap-addr row))
             :start-x col
-            :cram (if (cgbppu-p ppu) (cgbppu-bg-cram ppu))
+            :cram (if (cgbppu-p ppu) (ppucram-ram (cgbppu-bg-cram ppu)))
             :bg-buffer (gbppu-bg-buffer ppu)
             :is-background? t
             :framebuffer-width +tilemap-pixel-width+
@@ -544,7 +561,7 @@
             line-start
             (get-color-bytes ppu addr)
             :start-x 0
-            :cram (if (cgbppu-p ppu) (cgbppu-bg-cram ppu))
+            :cram (if (cgbppu-p ppu) (ppucram-ram (cgbppu-bg-cram ppu)))
             :bg-buffer (gbppu-bg-buffer ppu)
             :is-background? t
             :framebuffer-width +tilemap-pixel-width+
@@ -629,6 +646,6 @@
                 collect (list (format nil "~X" (ppu-read-memory-at-addr ppu addr))
                               (format nil "~X" (if (cgbppu-p ppu) (ppu-read-memory-at-addr ppu (+ addr #x2000)) 0))))))
 (defun ppu-dump-bg-cram (ppu)
-  (if (cgbppu-p ppu) (format t "~A~%" (cgbppu-bg-cram ppu))))
+  (if (cgbppu-p ppu) (format t "~A~%" (ppucram-ram (cgbppu-bg-cram ppu)))))
 (defun ppu-dump-obj-cram (ppu)
-  (if (cgbppu-p ppu) (format t "~A~%" (cgbppu-obj-cram ppu))))
+  (if (cgbppu-p ppu) (format t "~A~%" (ppucram-ram (cgbppu-obj-cram ppu)))))
