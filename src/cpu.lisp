@@ -3,7 +3,7 @@
 
 (in-package :clboy)
 
-(defconstant +cpu-speed+ 4194304)
+(defconstant +default-cpu-speed+ 4194304)
 
 (defstruct gbcpu
   (a  0 :type (unsigned-byte 8))
@@ -17,7 +17,8 @@
   (sp 0 :type (unsigned-byte 16))
   (clock 0)
   (clock-remainder 0)
-  (div-clock 0 :type (unsigned-byte 16))
+  (cpu-speed +default-cpu-speed+)
+  (div-cycles 0 :type (unsigned-byte 16))
   (int-ena 0 :type (unsigned-byte 1))
   (halted 0 :type (unsigned-byte 1))
   (flags (make-gbflags)))
@@ -86,24 +87,21 @@
   (incf (gbcpu-pc cpu) (instruction-bytes instr))
   (incr-clocks cpu instr))
 (defun incr-clocks (cpu instr)
-  (incf (gbcpu-clock cpu) (* (car (instruction-cycles instr)) 4))
-  (incf (gbcpu-div-clock cpu) (car (instruction-cycles instr))))
+  (incf (gbcpu-clock cpu) (* (car (instruction-cycles instr)) 4)))
 (defun incr-branched-clocks (cpu instr)
-  (incf (gbcpu-clock cpu) (* (cadr (instruction-cycles instr)) 4))
-  (incf (gbcpu-div-clock cpu) (cadr (instruction-cycles instr))))
+  (incf (gbcpu-clock cpu) (* (cadr (instruction-cycles instr)) 4)))
 
 (defun get-new-addr-from-relative (addr b)
   (let ((res (+ addr (make-signed-from-unsigned b))))
     (if (< res 0) (+ #x10000 res) res)))
 
 (defun add-signed-byte-to-sp (cpu b)
-  (let* ((sp (gbcpu-sp cpu))
-         (res (get-new-addr-from-relative sp b)))
+  (let ((sp (gbcpu-sp cpu)))
     (setf (gbflags-z (gbcpu-flags cpu)) #x00
           (gbflags-n (gbcpu-flags cpu)) #x00
           (gbflags-h (gbcpu-flags cpu)) (if (> (+ (logand sp #x0f) (logand b #x0f)) #xf) #x01 #x00)
           (gbflags-c (gbcpu-flags cpu)) (if (> (+ (logand sp #xff) (logand b #xff)) #xff) #x01 #x00))
-    (logand res #xffff)))
+    (logand (get-new-addr-from-relative sp b) #xffff)))
 
 (defun and-op (cpu val1 val2)
   (let ((res (logand val1 val2)))
@@ -145,12 +143,11 @@
   (add cpu val1 val2 (gbflags-c (gbcpu-flags cpu))))
 
 (defun sub (cpu val1 val2 &optional (c 0))
-  (let* ((val2-with-c (+ val2 c))
-        (res (if (< val1 val2-with-c) (- (+ val1 #x100) val2-with-c) (- val1 val2-with-c))))
+  (let ((res (- (+ val1 #x100) val2 c)))
     (setf (gbflags-z (gbcpu-flags cpu)) (if (= (logand res #xff) #x00) #x01 #x00)
           (gbflags-n (gbcpu-flags cpu)) 1
           (gbflags-h (gbcpu-flags cpu)) (if (< (logand #x0f val1) (+ (logand #x0f val2) c)) #x01 #x00)
-          (gbflags-c (gbcpu-flags cpu)) (if (< val1 val2-with-c) #x01 #x00))
+          (gbflags-c (gbcpu-flags cpu)) (if (< val1 (+ val2 c)) #x01 #x00))
     (logand res #xff)))
 (defun sbc (cpu val1 val2)
   (sub cpu val1 val2 (gbflags-c (gbcpu-flags cpu))))
@@ -208,23 +205,17 @@
                 :z  (logand (ash val -7) #x01)))
 
 (defun push-addr-on-stack (cpu gb addr)
-  (let ((sp (gbcpu-sp cpu))
-        (lsb (logand addr #xff))
-        (msb (logand (ash addr -8) #xff)))
+  (let ((sp (gbcpu-sp cpu)))
     (decf (gbcpu-sp cpu) 2)
-    (write-memory-at-addr gb (- sp 1) msb)
-    (write-memory-at-addr gb (- sp 2) lsb)))
+    (write-memory-at-addr gb (- sp 1) (logand (ash addr -8) #xff))
+    (write-memory-at-addr gb (- sp 2) (logand addr #xff))))
 (defun pop-addr-from-stack (cpu gb)
-  (let* ((sp (gbcpu-sp cpu))
-         (lsb (read-memory-at-addr gb sp))
-         (msb (read-memory-at-addr gb (+ sp 1))))
+  (let ((addr (peek-addr-from-stack cpu gb)))
     (incf (gbcpu-sp cpu) 2)
-    (logior lsb (ash msb 8))))
+    addr))
 (defun peek-addr-from-stack (cpu gb)
-  (let* ((sp (gbcpu-sp cpu))
-         (lsb (read-memory-at-addr gb sp))
-         (msb (read-memory-at-addr gb (+ sp 1))))
-    (logior lsb (ash msb 8))))
+  (let ((sp (gbcpu-sp cpu)))
+    (logior (read-memory-at-addr gb sp) (ash (read-memory-at-addr gb (+ sp 1)) 8))))
 
 (defun push-reg-pair-on-stack (cpu gb reg1 reg2)
   (let ((sp (gbcpu-sp cpu)))
@@ -254,13 +245,12 @@
           (gbflags-c (gbcpu-flags cpu)) b7)
     res))
 (defun rot-left-c-reg (cpu val)
-  (let* ((b7 (logand (ash val -7) #x01))
-         (res (logand (logior (ash val 1) b7) #xff)))
-    (setf (gbflags-z (gbcpu-flags cpu)) (if (= res #x00) #x01 #x00)
+  (let ((b7 (logand (ash val -7) #x01)))
+    (setf (gbflags-z (gbcpu-flags cpu)) (if (= val #x00) #x01 #x00)
           (gbflags-n (gbcpu-flags cpu)) 0
           (gbflags-h (gbcpu-flags cpu)) 0
           (gbflags-c (gbcpu-flags cpu)) b7)
-    res))
+    (logand (logior (ash val 1) b7) #xff)))
 
 (defun rot-right-reg (cpu val)
   (let ((b0 (logand val #x01))
@@ -271,30 +261,26 @@
           (gbflags-c (gbcpu-flags cpu)) b0)
     res))
 (defun rot-right-c-reg (cpu val)
-  (let* ((b0 (logand val #x01))
-         (res (logand (logior (ash val -1) (ash b0 7)) #xff)))
-    (setf (gbflags-z (gbcpu-flags cpu)) (if (= res #x00) #x01 #x00)
+  (let ((b0 (logand val #x01)))
+    (setf (gbflags-z (gbcpu-flags cpu)) (if (= val #x00) #x01 #x00)
           (gbflags-n (gbcpu-flags cpu)) 0
           (gbflags-h (gbcpu-flags cpu)) 0
           (gbflags-c (gbcpu-flags cpu)) b0)
-    res))
+    (logand (logior (ash val -1) (ash b0 7)) #xff)))
 
 (defun sla (cpu val)
-  (let ((b7 (logand (ash val -7) #x01))
-        (res (logand (ash val 1) #xfe)))
+  (let ((res (logand (ash val 1) #xfe)))
     (setf (gbflags-z (gbcpu-flags cpu)) (if (= res #x00) #x01 #x00)
           (gbflags-n (gbcpu-flags cpu)) 0
           (gbflags-h (gbcpu-flags cpu)) 0
-          (gbflags-c (gbcpu-flags cpu)) b7)
+          (gbflags-c (gbcpu-flags cpu)) (logand (ash val -7) #x01))
     res))
 (defun sra (cpu val)
-  (let* ((b0 (logand val #x01))
-        (b7 (logand val #x80))
-        (res (logior (logand (ash val -1) #xff) b7)))
+  (let ((res (logior (logand (ash val -1) #xff) (logand val #x80))))
     (setf (gbflags-z (gbcpu-flags cpu)) (if (= res #x00) #x01 #x00)
           (gbflags-n (gbcpu-flags cpu)) 0
           (gbflags-h (gbcpu-flags cpu)) 0
-          (gbflags-c (gbcpu-flags cpu)) b0)
+          (gbflags-c (gbcpu-flags cpu)) (logand val #x01))
     res))
 (defun srl (cpu val)
   (let ((b0 (logand val #x01))
@@ -306,9 +292,7 @@
     res))
 
 (defun swap-reg (cpu val)
-  (let* ((lsb (logand val #xf))
-         (msb (logand (ash val -4) #xf))
-         (res (logior (ash lsb 4) msb)))
+  (let ((res (logior (ash (logand val #xf) 4) (logand (ash val -4) #xf))))
     (setf (gbflags-z (gbcpu-flags cpu)) (if (= res #x00) #x01 #x00)
           (gbflags-n (gbcpu-flags cpu)) 0
           (gbflags-h (gbcpu-flags cpu)) 0
@@ -326,21 +310,21 @@
                (funcall (instruction-fun instr) cpu gb instr))
              instr)
       (format t "Unimplemented instruction ~X @ ~X~%" op (gbcpu-pc cpu))))
-    (progn (incf (gbcpu-clock cpu) 4)
-           (incf (gbcpu-div-clock cpu)))))
+    (incf (gbcpu-clock cpu) 4)))
 
 (defun do-interrupt (cpu gb interrupt-id)
   (setf (gbcpu-halted cpu) #x00)
   (when (= (gbcpu-int-ena cpu) #x01)
     (setf (gbcpu-int-ena cpu) #x00)
     (write-memory-at-addr gb #xff0f (logand (read-memory-at-addr gb #xff0f) (logxor (ash #x01 interrupt-id) #xff)))
+    ;(format t "calling interrupt at addr ~X~%" (+ (* interrupt-id 8) #x40))
     (do-call-at-addr cpu gb (+ (* interrupt-id 8) #x40))))
 
 (defun step-cpu (cpu gb)
   (let ((instr (emu-single-op cpu gb)))
-    (when (not instr) (sdl2:push-event :quit) nil)
+    (when (not instr) (sdl2:push-event :quit))
     (when (and *debug* (instruction-p instr))
        (format t "~X: ~A --> PC=~X~%" (instruction-opcode instr) (instruction-asm instr) (gbcpu-pc cpu)))
     ;(when (= (gbcpu-pc cpu) #xc33d) (sdl2:push-event :quit) nil)
     ;(when (= (instruction-opcode instr) #x27) (sdl2:push-event :quit) nil)
-    t))
+    (when instr t)))

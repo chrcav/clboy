@@ -40,6 +40,7 @@
     (get-ramsize-from-rom cart)
     (initialize-ram-from-file cart (concatenate 'string filename ".ram"))
     (get-cgb cart)
+    (is-supported-carttype? cart)
     cart))
 
 (defun cart-write-ram-to-file (cart filename)
@@ -89,6 +90,18 @@
 (defun get-cgb (cart)
   (setf (gbcart-cgb cart) (cart-read-memory-at-addr cart #x143)))
 
+(defun is-supported-carttype? (cart)
+  "Checks CART for a type and checks against support cart type values"
+  (case (gbcart-carttype cart)
+    ((#x00 ; rom only
+      #x01 #x02 #x03 ; mbc1
+      #x05 #x06 ; mbc2
+      #x0f #x10 #x11 #x12 #x13 ;mbc3
+      #x19 #x1a #x1b #x1c #x1d #x1e) ;mbc5
+     t)
+    (otherwise (format t "Unsupported cartridge type ~X~%" (gbcart-carttype cart))
+               nil)))
+
 (defun cart-read-memory-at-addr (cart addr)
   "Route memory reads from mmu to CART memory at ADDR. Memory can be ROM, RAM, or other cart data
   based on address and mbc flags"
@@ -136,12 +149,11 @@
     ((#x0000 #x1000)
      (setf (gbcart-ramon cart) (= (logand val #xf) #x0a)))
     ((#x2000 #x3000)
-     (let* ((lower5bits (logand val #x1f))
-            (rombank
-              (logand
+     (let ((lower5bits (logand val #x1f)))
+       (setf (gbcart-rombank cart) 
+             (logand
                 (+ (logand (gbcart-rombank cart) #x60) (if (> lower5bits 1) lower5bits 1))
-                (gbcart-rommask cart))))
-       (setf (gbcart-rombank cart) rombank)))
+                (gbcart-rommask cart)))))
     ((#x4000 #x5000)
      (let ((rombank
              (logand
@@ -176,9 +188,8 @@
     ((#x0000 #x1000 #x2000 #x3000)
      (if (= (logand addr #x100) 0)
        (setf (gbcart-ramon cart) (= (logand val #xf) #x0a))
-       (let* ((lsb (logand val #xf))
-              (rombank (logand (if (> lsb 1) lsb 1) (gbcart-rommask cart))))
-         (setf (gbcart-rombank cart) rombank))))
+       (let ((lsb (logand val #xf)))
+         (setf (gbcart-rombank cart) (logand (if (> lsb 1) lsb 1) (gbcart-rommask cart))))))
     ((#xa000 #xb000)
      (if (gbcart-ramon cart)
        (setf (aref (gbcart-ram cart) (logand addr #x1ff)) val)))))
@@ -206,8 +217,7 @@
     ((#x0000 #x1000)
      (setf (gbcart-ramon cart) (= (logand val #xf) #x0a)))
     ((#x2000 #x3000)
-     (let* ((rombank (logand (if (> val 1) val 1) (gbcart-rommask cart))))
-       (setf (gbcart-rombank cart) rombank)))
+     (setf (gbcart-rombank cart) (logand (if (> val 1) val 1) (gbcart-rommask cart))))
     ((#x4000 #x5000)
      (if (= (logand val #x8) #x0)
        (setf (gbcart-rambank cart) (logand val (gbcart-rammask cart)))
@@ -242,10 +252,10 @@
     ((#x0000 #x1000)
      (setf (gbcart-ramon cart) (= (logand val #xf) #x0a)))
     (#x2000
-     (let ((rombank (logand (logior (logand (gbcart-rommask cart) #x100) val) (gbcart-rommask cart))))
+     (let ((rombank (logand (logior (logand (gbcart-rombank cart) #x100) val) (gbcart-rommask cart))))
        (setf (gbcart-rombank cart) rombank)))
     (#x3000
-     (let ((rombank (logand (logior (logand (gbcart-rommask cart) #xff) (logand val #x1)) (gbcart-rommask cart))))
+     (let ((rombank (logand (logior (logand (gbcart-rombank cart) #xff) (if (= val 1) #x100 0)) (gbcart-rommask cart))))
        (setf (gbcart-rombank cart) rombank)))
     ((#x4000 #x5000)
      (setf (gbcart-rambank cart) (logand (logand (ash val -5) #x03) (gbcart-rammask cart))))

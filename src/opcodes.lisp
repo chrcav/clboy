@@ -240,6 +240,7 @@
                         :fun (lambda (cpu gb instr)
                                (setf (gb-stopped? gb) t)
                                (write-memory-at-addr gb #xff04 0)
+                               (when (cgb-p gb) (maybe-do-speed-switch gb))
                                (incf (gbcpu-pc cpu) (instruction-bytes instr)))))
 
 (setf (aref ops #x11) (make-instruction
