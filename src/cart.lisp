@@ -59,12 +59,12 @@
   (concatenate 'string (gbcart-filename cart) ".ram"))
 
 (defun initialize-ram-from-file (cart file)
-  (let ((ram (read-rom-data-from-file file)))
+  (let ((ram (read-bin-data-from-file file)))
     (replace (gbcart-ram cart) ram)))
 
 (defun replace-memory-with-rom (cart file)
   "given a GBCART CART replace rom with FILE contents"
-  (let ((rom (read-rom-data-from-file file)))
+  (let ((rom (read-bin-data-from-file file)))
     (setf (gbcart-rom cart) (make-array (length rom) :element-type '(unsigned-byte 8)))
     (replace (gbcart-rom cart) rom)))
 

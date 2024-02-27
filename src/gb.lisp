@@ -218,205 +218,173 @@
   "DMG bios as a list of bytes")
 
 (defparameter *cgb-bios*
-  '(#x31 #xfe #xff #xcd #x26 #x06 #x26 #xfe #x0e #xa0 #x22 #x0d
-    #x20 #xfc #x0e #x10 #x21 #x30 #xff #x22 #x2f #x0d #x20 #xfb
-    #xe0 #xc1 #xe0 #x80 #x3e #x80 #xe0 #x26 #xe0 #x11 #x3e #xf3
-    #xe0 #x12 #xe0 #x25 #x3e #x77 #xe0 #x24 #x3e #xfc #xe0 #x47
-    #x11 #x04 #x01 #x21 #x10 #x80 #x1a #x47 #xcd #xf1 #x05 #x13
-    #x7b #xfe #x34 #x20 #xf5 #xcd #xae #x06 #x3e #x01 #xe0 #x4f
-    #xcd #x26 #x06 #xcd #x53 #x06 #x06 #x03 #x21 #xc2 #x98 #x16
-    #x03 #x3e #x08 #x0e #x10 #xcd #x86 #x00 #xf5 #xd6 #x20 #xd6
-    #x03 #x30 #x06 #xc6 #x20 #xcd #x86 #x00 #x0d #xf1 #x82 #x0d
-    #x20 #xeb #xd6 #x2c #xd5 #x11 #x10 #x00 #x19 #xd1 #x05 #x20
-    #xde #x15 #x28 #x17 #x15 #x3e #x38 #x2e #xa7 #x01 #x07 #x01
-    #x18 #xd3 #xf5 #x3e #x01 #xe0 #x4f #x36 #x08 #xaf #xe0 #x4f
-    #xf1 #x22 #xc9 #x11 #xe1 #x05 #x0e #x08 #x21 #x81 #xff #xaf
-    #x2f #x22 #x22 #x1a #x1c #xf6 #x20 #x47 #x1a #x1d #xf6 #x84
-    #x1f #xcb #x18 #x70 #x2c #x22 #xaf #x22 #x22 #x1a #x1c #x22
-    #x1a #x1c #x22 #xaf #x0d #x20 #xe1 #xcd #x18 #x08 #x3e #x91
-    #xe0 #x40 #xcd #xbb #x06 #x3e #x30 #xe0 #xc2 #x06 #x04 #xcd
-    #x15 #x06 #x3e #x83 #xcd #x1f #x06 #x06 #x05 #xcd #x15 #x06
-    #x3e #xc1 #xcd #x1f #x06 #xcd #x3f #x08 #xcd #x09 #x06 #x21
-    #xc2 #xff #x35 #x20 #xf4 #xcd #xe4 #x06 #x18 #x10 #xd0 #x00
-    #x98 #xa0 #x12 #xd0 #x00 #x80 #x00 #x40 #x00 #x00 #x00 #x00
-    #x00 #x00 #xe0 #x50 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
-    #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
-    #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
-    #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
-    #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
-    #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
-    #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
-    #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
-    #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
-    #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
-    #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
-    #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
-    #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
-    #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
-    #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
-    #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
-    #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
-    #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
-    #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
-    #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
-    #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
-    #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x88 #x16 #x36
-    #xd1 #xdb #xf2 #x3c #x8c #x92 #x3d #x5c #x58 #xc9 #x3e #x70
-    #x1d #x59 #x69 #x19 #x35 #xa8 #x14 #xaa #x75 #x95 #x99 #x34
-    #x6f #x15 #xff #x97 #x4b #x90 #x17 #x10 #x39 #xf7 #xf6 #xa2
-    #x49 #x4e #x43 #x68 #xe0 #x8b #xf0 #xce #x0c #x29 #xe8 #xb7
-    #x86 #x9a #x52 #x01 #x9d #x71 #x9c #xbd #x5d #x6d #x67 #x3f
-    #x6b #xb3 #x46 #x28 #xa5 #xc6 #xd3 #x27 #x61 #x18 #x66 #x6a
-    #xbf #x0d #xf4 #xb3 #x46 #x28 #xa5 #xc6 #xd3 #x27 #x61 #x18
-    #x66 #x6a #xbf #x0d #xf4 #xb3 #x00 #x04 #x05 #x23 #x22 #x03
-    #x1f #x0f #x0a #x05 #x13 #x24 #x87 #x25 #x1e #x2c #x15 #x20
-    #x1f #x14 #x05 #x21 #x0d #x0e #x05 #x1d #x05 #x12 #x09 #x03
-    #x02 #x1a #x19 #x19 #x29 #x2a #x1a #x2d #x2a #x2d #x24 #x26
-    #x9a #x2a #x1e #x29 #x22 #x22 #x05 #x2a #x06 #x05 #x21 #x19
-    #x2a #x2a #x28 #x02 #x10 #x19 #x2a #x2a #x05 #x00 #x27 #x24
-    #x16 #x19 #x06 #x20 #x0c #x24 #x0b #x27 #x12 #x27 #x18 #x1f
-    #x32 #x11 #x2e #x06 #x1b #x00 #x2f #x29 #x29 #x00 #x00 #x13
-    #x22 #x17 #x12 #x1d #x42 #x45 #x46 #x41 #x41 #x52 #x42 #x45
-    #x4b #x45 #x4b #x20 #x52 #x2d #x55 #x52 #x41 #x52 #x20 #x49
-    #x4e #x41 #x49 #x4c #x49 #x43 #x45 #x20 #x52 #x20 #x20 #xe8
-    #x90 #x90 #x90 #xa0 #xa0 #xa0 #xc0 #xc0 #xc0 #x48 #x48 #x48
-    #x00 #x00 #x00 #xd8 #xd8 #xd8 #x28 #x28 #x28 #x60 #x60 #x60
-    #xd0 #xd0 #xd0 #x80 #x40 #x40 #x20 #xe0 #xe0 #x20 #x10 #x10
-    #x18 #x20 #x20 #x20 #xe8 #xe8 #xe0 #x20 #xe0 #x10 #x88 #x10
-    #x80 #x80 #x40 #x20 #x20 #x38 #x20 #x20 #x90 #x20 #x20 #xa0
-    #x98 #x98 #x48 #x1e #x1e #x58 #x88 #x88 #x10 #x20 #x20 #x10
-    #x20 #x20 #x18 #xe0 #xe0 #x00 #x18 #x18 #x00 #x00 #x00 #x08
-    #x90 #xb0 #x90 #xa0 #xb0 #xa0 #xc0 #xb0 #xc0 #x80 #xb0 #x40
-    #x88 #x20 #x68 #xde #x00 #x70 #xde #x20 #x78 #x98 #xb6 #x48
-    #x80 #xe0 #x50 #x20 #xb8 #xe0 #x88 #xb0 #x10 #x20 #x00 #x10
-    #x20 #xe0 #x18 #xe0 #x18 #x00 #x18 #xe0 #x20 #xa8 #xe0 #x20
-    #x18 #xe0 #x00 #xc8 #x18 #xe0 #x00 #xe0 #x40 #x20 #x18 #xe0
-    #xe0 #x18 #x30 #x20 #xe0 #xe8 #xf0 #xf0 #xf0 #xf8 #xf8 #xf8
-    #xe0 #x20 #x08 #x00 #x00 #x10 #xff #x7f #xbf #x32 #xd0 #x00
-    #x00 #x00 #x9f #x63 #x79 #x42 #xb0 #x15 #xcb #x04 #xff #x7f
-    #x31 #x6e #x4a #x45 #x00 #x00 #xff #x7f #xef #x1b #x00 #x02
-    #x00 #x00 #xff #x7f #x1f #x42 #xf2 #x1c #x00 #x00 #xff #x7f
-    #x94 #x52 #x4a #x29 #x00 #x00 #xff #x7f #xff #x03 #x2f #x01
-    #x00 #x00 #xff #x7f #xef #x03 #xd6 #x01 #x00 #x00 #xff #x7f
-    #xb5 #x42 #xc8 #x3d #x00 #x00 #x74 #x7e #xff #x03 #x80 #x01
-    #x00 #x00 #xff #x67 #xac #x77 #x13 #x1a #x6b #x2d #xd6 #x7e
-    #xff #x4b #x75 #x21 #x00 #x00 #xff #x53 #x5f #x4a #x52 #x7e
-    #x00 #x00 #xff #x4f #xd2 #x7e #x4c #x3a #xe0 #x1c #xed #x03
-    #xff #x7f #x5f #x25 #x00 #x00 #x6a #x03 #x1f #x02 #xff #x03
-    #xff #x7f #xff #x7f #xdf #x01 #x12 #x01 #x00 #x00 #x1f #x23
-    #x5f #x03 #xf2 #x00 #x09 #x00 #xff #x7f #xea #x03 #x1f #x01
-    #x00 #x00 #x9f #x29 #x1a #x00 #x0c #x00 #x00 #x00 #xff #x7f
-    #x7f #x02 #x1f #x00 #x00 #x00 #xff #x7f #xe0 #x03 #x06 #x02
-    #x20 #x01 #xff #x7f #xeb #x7e #x1f #x00 #x00 #x7c #xff #x7f
-    #xff #x3f #x00 #x7e #x1f #x00 #xff #x7f #xff #x03 #x1f #x00
-    #x00 #x00 #xff #x03 #x1f #x00 #x0c #x00 #x00 #x00 #xff #x7f
-    #x3f #x03 #x93 #x01 #x00 #x00 #x00 #x00 #x00 #x42 #x7f #x03
-    #xff #x7f #xff #x7f #x8c #x7e #x00 #x7c #x00 #x00 #xff #x7f
-    #xef #x1b #x80 #x61 #x00 #x00 #xff #x7f #xea #x7f #x5f #x7d
-    #x00 #x00 #x78 #x47 #x90 #x32 #x87 #x1d #x61 #x08 #x03 #x90
-    #x0f #x18 #x00 #x78 #x81 #x09 #x12 #x15 #x54 #x93 #x99 #x9c
-    #x9f #xa2 #x3c #x42 #xb9 #xa5 #xb9 #xa5 #x42 #x3c #x33 #x00
-    #x03 #x1c #x0f #x1f #x7b #x1c #x3e #x3c #xfd #xb6 #xf7 #xf7
-    #x71 #x01 #x7f #xfc #x30 #xc0 #x7f #x78 #xff #xfd #xdd #xcf
-    #x00 #x23 #x60 #xfc #x6f #xd4 #xbc #x35 #x08 #xff #xc8 #x80
-    #xf0 #x53 #xf8 #x6a #xdf #x7c #x3d #x81 #x7d #x79 #x3c #xf3
-    #x43 #xe7 #x0f #xc7 #x00 #xfc #x01 #xd2 #xb4 #xad #x2b #x41
-    #x0e #x34 #x13 #x1c #x41 #x38 #x31 #xff #xef #xf3 #xe0 #x5f
-    #xd7 #xd7 #xff #x3f #xe0 #xf6 #xaf #xda #x9f #xfd #xa9 #xe8
-    #xfc #xda #xbc #x3e #x7d #xa9 #xe8 #x00 #xff #xcf #x1f #xff
-    #xfd #x28 #x1d #x80 #x1c #x3d #x3c #xff #xf4 #x2a #x38 #xa9
-    #x3f #xff #x40 #x70 #x00 #xff #xc5 #xc0 #xbf #xf6 #xaa #xcf
-    #xe1 #xd2 #x00 #xf3 #xe3 #xf7 #xf3 #xb4 #x27 #x77 #x5f #xf5
-    #xfc #x38 #x48 #x00 #xff #xc7 #x3f #xb4 #xad #x28 #xef #xaf
-    #xc4 #xcf #x20 #xce #x8e #x9f #x90 #x1e #xff #xff #x42 #x1c
-    #xa9 #x33 #x00 #xff #x09 #x9f #x8f #xe2 #x1f #x5f #xfd #x48
-    #x3e #x3f #xa7 #xbf #xcf #x3c #x42 #x38 #xa8 #x7f #xaf #xfc
-    #x00 #xff #xcf #xff #xff #x3f #x00 #xff #xca #xfe #xff #xd4
-    #x00 #xff #xff #x2b #xfe #xfd #x4f #x00 #xfc #xfc #x53 #xff
-    #xfc #x0f #xf7 #xfd #x30 #xff #x1e #x3d #xfc #x45 #xff #x87
-    #x1f #xf7 #xbf #x03 #xff #x3f #xfe #x5d #x54 #x00 #xff #xfc
-    #x01 #xc0 #x83 #x03 #x87 #xd3 #x4f #x54 #x8f #x3c #xd2 #xaa
-    #x2a #xfc #x06 #xbe #x3e #xdf #xdf #xdd #xcf #x00 #xc8 #x0e
-    #xff #x7b #xfc #xf3 #x15 #xc0 #x7f #xff #xff #xff #xff #xf1
-    #x03 #xc2 #xff #x87 #xff #x50 #xf8 #x00 #xff #x03 #xc7 #x83
-    #xe3 #x61 #xf1 #xb6 #x53 #x7c #xdf #xda #xaf #xf4 #xa5 #x4a
-    #xd7 #xd7 #x55 #xd7 #xff #xf1 #xe0 #x6f #xdb #xf0 #xf9 #xf1
-    #x00 #xfb #xf9 #x7f #x7b #xb7 #xff #x3f #x1e #xd0 #x1c #xaa
-    #xa4 #xff #xcf #x00 #xfc #x3f #x13 #x1e #x31 #x7c #xf8 #xe5
-    #xf5 #xf5 #xd7 #xd7 #x01 #xff #x7f #x4f #x77 #xc7 #x22 #x9f
-    #x03 #x7d #x01 #x1d #x24 #x38 #x6d #x00 #x55 #xcd #xf4 #x05
-    #x3e #x04 #x0e #x00 #xcb #x20 #xf5 #xcb #x11 #xf1 #xcb #x11
-    #x3d #x20 #xf5 #x79 #x22 #x23 #x22 #x23 #xc9 #xe5 #x21 #x0f
-    #xff #xcb #x86 #xcb #x46 #x28 #xfc #xe1 #xc9 #xcd #x3f #x08
-    #xcd #x09 #x06 #x05 #x20 #xf7 #xc9 #xe0 #x13 #x3e #x87 #xe0
-    #x14 #xc9 #x21 #x00 #x80 #xaf #x22 #xcb #x6c #x28 #xfa #xc9
-    #xcd #x33 #x06 #x1a #xa1 #x47 #x1c #x1c #x1a #x1d #x1d #xa1
-    #xcb #x37 #xb0 #xcb #x41 #x28 #x02 #xcb #x37 #x23 #x22 #xcb
-    #x31 #xc9 #xcd #x4d #x06 #xcd #x30 #x06 #x1c #x7b #xc9 #x21
-    #x96 #x04 #x11 #x7f #x80 #x0e #x30 #x46 #x05 #x28 #x36 #x04
-    #x23 #x37 #xcb #x10 #x38 #x20 #xcb #x20 #x38 #x03 #x2a #x18
-    #x20 #xcb #x20 #x20 #x05 #x46 #x23 #x37 #xcb #x10 #x4f #x30
-    #x03 #xcb #x3f #xfe #x87 #xcb #x20 #x38 #x02 #xb1 #xfe #xa1
-    #x18 #x07 #xcb #x20 #x38 #x03 #x1b #x1a #x13 #x13 #x12 #xcb
-    #x20 #x20 #xd1 #x18 #xc6 #x62 #x2e #x80 #x11 #x04 #x01 #x0e
-    #xf0 #xcd #x4a #x06 #xc6 #x16 #x5f #xcd #x4a #x06 #xd6 #x16
-    #x5f #xfe #x1c #x20 #xee #x23 #x11 #x8e #x04 #x0e #x08 #x1a
-    #x13 #x22 #x23 #x0d #x20 #xf9 #xc9 #x3e #x01 #xe0 #x4f #x16
-    #x1a #x06 #x02 #xcd #x15 #x06 #x21 #xc0 #x98 #x0e #x03 #x7e
-    #xfe #x0f #x28 #x05 #x34 #xe6 #x07 #x28 #x03 #x23 #x18 #xf3
-    #x7d #xf6 #x1f #x6f #x23 #x0d #x20 #xeb #x15 #x20 #xde #xc9
-    #x06 #x20 #x0e #x20 #x21 #x81 #xff #xc5 #x2a #x5f #x3a #x57
-    #x01 #x21 #x04 #x7b #xe6 #x1f #xfe #x1f #x20 #x01 #x0d #x7b
-    #xfe #xe0 #x38 #x09 #x7a #xe6 #x03 #xfe #x03 #x20 #x02 #xcb
-    #xa9 #x7a #xe6 #x7c #xfe #x7c #x20 #x02 #xcb #x90 #x7b #x81
-    #x22 #x7a #x88 #x22 #xc1 #x0d #x20 #xcf #xcd #x09 #x06 #xcd
-    #x18 #x08 #xcd #x09 #x06 #x05 #x20 #xbe #x3e #x02 #xe0 #x70
-    #x21 #x00 #xd0 #xcd #x29 #x06 #x3c #xcd #x2c #x08 #xcd #x31
-    #x08 #xcd #x2c #x08 #xaf #xe0 #x70 #x2f #xe0 #x00 #x57 #x59
-    #x2e #x0d #xfa #x43 #x01 #xcb #x7f #xcc #x73 #x07 #xcb #x7f
-    #xe0 #x4c #xf0 #x80 #x47 #x28 #x05 #xf0 #xc1 #xa7 #x20 #x06
-    #xaf #x4f #x3e #x11 #x61 #xc9 #xcd #x73 #x07 #xe0 #x4c #x3e
-    #x01 #xc9 #x21 #x7d #x04 #x4f #x06 #x00 #x09 #x7e #xc9 #x3e
-    #x01 #xe0 #x6c #xcd #x9e #x07 #xcb #x7f #xc4 #xdf #x08 #xcb
-    #xbf #x47 #x80 #x80 #x47 #xf0 #xc1 #xa7 #x28 #x05 #xcd #x6a
-    #x07 #x18 #x01 #x78 #xcd #x09 #x06 #xcd #xf3 #x07 #x3e #x04
-    #x11 #x08 #x00 #x2e #x7c #xc9 #x21 #x4b #x01 #x7e #xfe #x33
-    #x28 #x05 #x3d #x20 #x40 #x18 #x0c #x2e #x44 #x2a #xfe #x30
-    #x20 #x37 #x7e #xfe #x31 #x20 #x32 #x2e #x34 #x0e #x10 #xaf
-    #x86 #x2c #x0d #x20 #xfb #x47 #x21 #x00 #x02 #x7d #xd6 #x5e
-    #xc8 #x2a #xb8 #x20 #xf8 #x7d #xd6 #x42 #x38 #x0e #xe5 #x7d
-    #xc6 #x7a #x6f #x7e #xe1 #x4f #xfa #x37 #x01 #xb9 #x20 #xe5
-    #x7d #xc6 #x5d #x6f #x78 #xe0 #x80 #x7e #xc9 #xaf #xc9 #x21
-    #xd9 #x02 #x06 #x00 #x4f #x09 #xc9 #xcd #xeb #x07 #x1e #x00
-    #x2a #xe5 #x21 #x7e #x03 #x4f #x09 #x16 #x08 #x0e #x6a #xcd
-    #x21 #x08 #xe1 #xcb #x5b #x20 #x04 #x1e #x08 #x18 #xe9 #x4e
-    #x21 #x7e #x03 #x09 #x16 #x08 #x18 #x05 #x21 #x81 #xff #x16
-    #x40 #x1e #x00 #x0e #x68 #x3e #x80 #xb3 #xe2 #x0c #x2a #xe2
-    #x15 #x20 #xfb #xc9 #xe0 #x4f #x21 #xee #x00 #xcd #x09 #x06
-    #x0e #x51 #x06 #x05 #x2a #xe2 #x0c #x05 #x20 #xfa #xc9 #x3e
-    #x20 #xe0 #x00 #xf0 #x00 #x2f #xe6 #x0f #xc8 #x2e #x00 #x2c
-    #x1f #x30 #xfc #x3e #x10 #xe0 #x00 #xf0 #x00 #x2f #x17 #x17
-    #xe6 #x0c #x85 #x6f #xf0 #xc1 #xbd #xc8 #x7d #xe0 #xc1 #xc5
-    #xd5 #xcd #x6a #x07 #xcd #xeb #x07 #x2c #x2c #x4e #x21 #x7f
-    #x03 #x09 #x3a #xfe #x7f #x20 #x02 #x23 #x23 #xf5 #x2a #xe5
-    #x21 #x81 #xff #xcd #xd5 #x08 #x2e #x83 #xcd #xd5 #x08 #xe1
-    #xe0 #x87 #x2a #xe5 #x21 #x82 #xff #xcd #xd5 #x08 #x2e #x84
-    #xcd #xd5 #x08 #xe1 #xe0 #x88 #xf1 #x28 #x02 #x23 #x23 #xf0
-    #xbb #xe6 #xde #x47 #x2a #xe6 #xde #x80 #x47 #xfa #xbc #xff
-    #xcb #x97 #x4e #xcb #x91 #x89 #x1f #xea #xbc #xff #x78 #x1f
-    #xea #xbb #xff #x2d #x2a #xe0 #xbf #x2a #xe0 #xc0 #x2a #xe0
-    #x85 #x2a #xe0 #x86 #xcd #x09 #x06 #xcd #x18 #x08 #x3e #x30
-    #xe0 #xc2 #xd1 #xc1 #xc9 #x11 #x08 #x00 #x4b #x77 #x19 #x0d
-    #x20 #xfb #xc9 #xf5 #xcd #x09 #x06 #x3e #x19 #xea #x10 #x99
-    #x21 #x2f #x99 #x0e #x0c #x3d #x28 #x08 #x32 #x0d #x20 #xf9
-    #x2e #x0f #x18 #xf5 #xf1 #xc9 #x00 #x00 #x00 #x00 #x00 #x00)
-  "CGB bios as a list of bytes")
+  '(#x31 #xFE #xFF #x3E #x02 #xC3 #x7C #x00 #xD3 #x00 #x98 #xA0 #x12 #xD3 #x00
+ #x80 #x00 #x40 #x1E #x53 #xD0 #x00 #x1F #x42 #x1C #x00 #x14 #x2A #x4D #x19
+ #x8C #x7E #x00 #x7C #x31 #x6E #x4A #x45 #x52 #x4A #x00 #x00 #xFF #x53 #x1F
+ #x7C #xFF #x03 #x1F #x00 #xFF #x1F #xA7 #x00 #xEF #x1B #x1F #x00 #xEF #x1B
+ #x00 #x7C #x00 #x00 #xFF #x03 #xCE #xED #x66 #x66 #xCC #x0D #x00 #x0B #x03
+ #x73 #x00 #x83 #x00 #x0C #x00 #x0D #x00 #x08 #x11 #x1F #x88 #x89 #x00 #x0E
+ #xDC #xCC #x6E #xE6 #xDD #xDD #xD9 #x99 #xBB #xBB #x67 #x63 #x6E #x0E #xEC
+ #xCC #xDD #xDC #x99 #x9F #xBB #xB9 #x33 #x3E #x3C #x42 #xB9 #xA5 #xB9 #xA5
+ #x42 #x3C #x58 #x43 #xE0 #x70 #x3E #xFC #xE0 #x47 #xCD #x75 #x02 #xCD #x00
+ #x02 #x26 #xD0 #xCD #x03 #x02 #x21 #x00 #xFE #x0E #xA0 #xAF #x22 #x0D #x20
+ #xFC #x11 #x04 #x01 #x21 #x10 #x80 #x4C #x1A #xE2 #x0C #xCD #xC6 #x03 #xCD
+ #xC7 #x03 #x13 #x7B #xFE #x34 #x20 #xF1 #x11 #x72 #x00 #x06 #x08 #x1A #x13
+ #x22 #x23 #x05 #x20 #xF9 #xCD #xF0 #x03 #x3E #x01 #xE0 #x4F #x3E #x91 #xE0
+ #x40 #x21 #xB2 #x98 #x06 #x4E #x0E #x44 #xCD #x91 #x02 #xAF #xE0 #x4F #x0E
+ #x80 #x21 #x42 #x00 #x06 #x18 #xF2 #x0C #xBE #x20 #xFE #x23 #x05 #x20 #xF7
+ #x21 #x34 #x01 #x06 #x19 #x78 #x86 #x2C #x05 #x20 #xFB #x86 #x20 #xFE #xCD
+ #x1C #x03 #x18 #x02 #x00 #x00 #xCD #xD0 #x05 #xAF #xE0 #x70 #x3E #x11 #xE0
+ #x50 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
+ #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
+ #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
+ #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
+ #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
+ #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
+ #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
+ #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
+ #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
+ #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
+ #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
+ #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
+ #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
+ #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
+ #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
+ #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
+ #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00 #x00
+ #x00 #x00 #x21 #x00 #x80 #xAF #x22 #xCB #x6C #x28 #xFB #xC9 #x2A #x12 #x13
+ #x0D #x20 #xFA #xC9 #xE5 #x21 #x0F #xFF #xCB #x86 #xCB #x46 #x28 #xFC #xE1
+ #xC9 #x11 #x00 #xFF #x21 #x03 #xD0 #x0E #x0F #x3E #x30 #x12 #x3E #x20 #x12
+ #x1A #x2F #xA1 #xCB #x37 #x47 #x3E #x10 #x12 #x1A #x2F #xA1 #xB0 #x4F #x7E
+ #xA9 #xE6 #xF0 #x47 #x2A #xA9 #xA1 #xB0 #x32 #x47 #x79 #x77 #x3E #x30 #x12
+ #xC9 #x3E #x80 #xE0 #x68 #xE0 #x6A #x0E #x6B #x2A #xE2 #x05 #x20 #xFB #x4A
+ #x09 #x43 #x0E #x69 #x2A #xE2 #x05 #x20 #xFB #xC9 #xC5 #xD5 #xE5 #x21 #x00
+ #xD8 #x06 #x01 #x16 #x3F #x1E #x40 #xCD #x4A #x02 #xE1 #xD1 #xC1 #xC9 #x3E
+ #x80 #xE0 #x26 #xE0 #x11 #x3E #xF3 #xE0 #x12 #xE0 #x25 #x3E #x77 #xE0 #x24
+ #x21 #x30 #xFF #xAF #x0E #x10 #x22 #x2F #x0D #x20 #xFB #xC9 #xCD #x11 #x02
+ #xCD #x62 #x02 #x79 #xFE #x38 #x20 #x14 #xE5 #xAF #xE0 #x4F #x21 #xA7 #x99
+ #x3E #x38 #x22 #x3C #xFE #x3F #x20 #xFA #x3E #x01 #xE0 #x4F #xE1 #xC5 #xE5
+ #x21 #x43 #x01 #xCB #x7E #xCC #x89 #x05 #xE1 #xC1 #xCD #x11 #x02 #x79 #xD6
+ #x30 #xD2 #x06 #x03 #x79 #xFE #x01 #xCA #x06 #x03 #x7D #xFE #xD1 #x28 #x21
+ #xC5 #x06 #x03 #x0E #x01 #x16 #x03 #x7E #xE6 #xF8 #xB1 #x22 #x15 #x20 #xF8
+ #x0C #x79 #xFE #x06 #x20 #xF0 #x11 #x11 #x00 #x19 #x05 #x20 #xE7 #x11 #xA1
+ #xFF #x19 #xC1 #x04 #x78 #x1E #x83 #xFE #x62 #x28 #x06 #x1E #xC1 #xFE #x64
+ #x20 #x07 #x7B #xE0 #x13 #x3E #x87 #xE0 #x14 #xFA #x02 #xD0 #xFE #x00 #x28
+ #x0A #x3D #xEA #x02 #xD0 #x79 #xFE #x01 #xCA #x91 #x02 #x0D #xC2 #x91 #x02
+ #xC9 #x0E #x26 #xCD #x4A #x03 #xCD #x11 #x02 #xCD #x62 #x02 #x0D #x20 #xF4
+ #xCD #x11 #x02 #x3E #x01 #xE0 #x4F #xCD #x3E #x03 #xCD #x41 #x03 #xAF #xE0
+ #x4F #xCD #x3E #x03 #xC9 #x21 #x08 #x00 #x11 #x51 #xFF #x0E #x05 #xCD #x0A
+ #x02 #xC9 #xC5 #xD5 #xE5 #x21 #x40 #xD8 #x0E #x20 #x7E #xE6 #x1F #xFE #x1F
+ #x28 #x01 #x3C #x57 #x2A #x07 #x07 #x07 #xE6 #x07 #x47 #x3A #x07 #x07 #x07
+ #xE6 #x18 #xB0 #xFE #x1F #x28 #x01 #x3C #x0F #x0F #x0F #x47 #xE6 #xE0 #xB2
+ #x22 #x78 #xE6 #x03 #x5F #x7E #x0F #x0F #xE6 #x1F #xFE #x1F #x28 #x01 #x3C
+ #x07 #x07 #xB3 #x22 #x0D #x20 #xC7 #xE1 #xD1 #xC1 #xC9 #x0E #x00 #x1A #xE6
+ #xF0 #xCB #x49 #x28 #x02 #xCB #x37 #x47 #x23 #x7E #xB0 #x22 #x1A #xE6 #x0F
+ #xCB #x49 #x20 #x02 #xCB #x37 #x47 #x23 #x7E #xB0 #x22 #x13 #xCB #x41 #x28
+ #x0D #xD5 #x11 #xF8 #xFF #xCB #x49 #x28 #x03 #x11 #x08 #x00 #x19 #xD1 #x0C
+ #x79 #xFE #x18 #x20 #xCC #xC9 #x47 #xD5 #x16 #x04 #x58 #xCB #x10 #x17 #xCB
+ #x13 #x17 #x15 #x20 #xF6 #xD1 #x22 #x23 #x22 #x23 #xC9 #x3E #x19 #xEA #x10
+ #x99 #x21 #x2F #x99 #x0E #x0C #x3D #x28 #x08 #x32 #x0D #x20 #xF9 #x2E #x0F
+ #x18 #xF3 #xC9 #x3E #x01 #xE0 #x4F #xCD #x00 #x02 #x11 #x07 #x06 #x21 #x80
+ #x80 #x0E #xC0 #x1A #x22 #x23 #x22 #x23 #x13 #x0D #x20 #xF7 #x11 #x04 #x01
+ #xCD #x8F #x03 #x01 #xA8 #xFF #x09 #xCD #x8F #x03 #x01 #xF8 #xFF #x09 #x11
+ #x72 #x00 #x0E #x08 #x23 #x1A #x22 #x13 #x0D #x20 #xF9 #x21 #xC2 #x98 #x06
+ #x08 #x3E #x08 #x0E #x10 #x22 #x0D #x20 #xFC #x11 #x10 #x00 #x19 #x05 #x20
+ #xF3 #xAF #xE0 #x4F #x21 #xC2 #x98 #x3E #x08 #x22 #x3C #xFE #x18 #x20 #x02
+ #x2E #xE2 #xFE #x28 #x20 #x03 #x21 #x02 #x99 #xFE #x38 #x20 #xED #x21 #xD8
+ #x08 #x11 #x40 #xD8 #x06 #x08 #x3E #xFF #x12 #x13 #x12 #x13 #x0E #x02 #xCD
+ #x0A #x02 #x3E #x00 #x12 #x13 #x12 #x13 #x13 #x13 #x05 #x20 #xEA #xCD #x62
+ #x02 #x21 #x4B #x01 #x7E #xFE #x33 #x20 #x0B #x2E #x44 #x1E #x30 #x2A #xBB
+ #x20 #x49 #x1C #x18 #x04 #x2E #x4B #x1E #x01 #x2A #xBB #x20 #x3E #x2E #x34
+ #x01 #x10 #x00 #x2A #x80 #x47 #x0D #x20 #xFA #xEA #x00 #xD0 #x21 #xC7 #x06
+ #x0E #x00 #x2A #xB8 #x28 #x08 #x0C #x79 #xFE #x4F #x20 #xF6 #x18 #x1F #x79
+ #xD6 #x41 #x38 #x1C #x21 #x16 #x07 #x16 #x00 #x5F #x19 #xFA #x37 #x01 #x57
+ #x7E #xBA #x28 #x0D #x11 #x0E #x00 #x19 #x79 #x83 #x4F #xD6 #x5E #x38 #xED
+ #x0E #x00 #x21 #x33 #x07 #x06 #x00 #x09 #x7E #xE6 #x1F #xEA #x08 #xD0 #x7E
+ #xE6 #xE0 #x07 #x07 #x07 #xEA #x0B #xD0 #xCD #xE9 #x04 #xC9 #x11 #x91 #x07
+ #x21 #x00 #xD9 #xFA #x0B #xD0 #x47 #x0E #x1E #xCB #x40 #x20 #x02 #x13 #x13
+ #x1A #x22 #x20 #x02 #x1B #x1B #xCB #x48 #x20 #x02 #x13 #x13 #x1A #x22 #x13
+ #x13 #x20 #x02 #x1B #x1B #xCB #x50 #x28 #x05 #x1B #x2B #x1A #x22 #x13 #x1A
+ #x22 #x13 #x0D #x20 #xD7 #x21 #x00 #xD9 #x11 #x00 #xDA #xCD #x64 #x05 #xC9
+ #x21 #x12 #x00 #xFA #x05 #xD0 #x07 #x07 #x06 #x00 #x4F #x09 #x11 #x40 #xD8
+ #x06 #x08 #xE5 #x0E #x02 #xCD #x0A #x02 #x13 #x13 #x13 #x13 #x13 #x13 #xE1
+ #x05 #x20 #xF0 #x11 #x42 #xD8 #x0E #x02 #xCD #x0A #x02 #x11 #x4A #xD8 #x0E
+ #x02 #xCD #x0A #x02 #x2B #x2B #x11 #x44 #xD8 #x0E #x02 #xCD #x0A #x02 #xC9
+ #x0E #x60 #x2A #xE5 #xC5 #x21 #xE8 #x07 #x06 #x00 #x4F #x09 #x0E #x08 #xCD
+ #x0A #x02 #xC1 #xE1 #x0D #x20 #xEC #xC9 #xFA #x08 #xD0 #x11 #x18 #x00 #x3C
+ #x3D #x28 #x03 #x19 #x20 #xFA #xC9 #xCD #x1D #x02 #x78 #xE6 #xFF #x28 #x0F
+ #x21 #xE4 #x08 #x06 #x00 #x2A #xB9 #x28 #x08 #x04 #x78 #xFE #x0C #x20 #xF6
+ #x18 #x2D #x78 #xEA #x05 #xD0 #x3E #x1E #xEA #x02 #xD0 #x11 #x0B #x00 #x19
+ #x56 #x7A #xE6 #x1F #x5F #x21 #x08 #xD0 #x3A #x22 #x7B #x77 #x7A #xE6 #xE0
+ #x07 #x07 #x07 #x5F #x21 #x0B #xD0 #x3A #x22 #x7B #x77 #xCD #xE9 #x04 #xCD
+ #x28 #x05 #xC9 #xCD #x11 #x02 #xFA #x43 #x01 #xCB #x7F #x28 #x04 #xE0 #x4C
+ #x18 #x28 #x3E #x04 #xE0 #x4C #x3E #x01 #xE0 #x6C #x21 #x00 #xDA #xCD #x7B
+ #x05 #x06 #x10 #x16 #x00 #x1E #x08 #xCD #x4A #x02 #x21 #x7A #x00 #xFA #x00
+ #xD0 #x47 #x0E #x02 #x2A #xB8 #xCC #xDA #x03 #x0D #x20 #xF8 #xC9 #x01 #x0F
+ #x3F #x7E #xFF #xFF #xC0 #x00 #xC0 #xF0 #xF1 #x03 #x7C #xFC #xFE #xFE #x03
+ #x07 #x07 #x0F #xE0 #xE0 #xF0 #xF0 #x1E #x3E #x7E #xFE #x0F #x0F #x1F #x1F
+ #xFF #xFF #x00 #x00 #x01 #x01 #x01 #x03 #xFF #xFF #xE1 #xE0 #xC0 #xF0 #xF9
+ #xFB #x1F #x7F #xF8 #xE0 #xF3 #xFD #x3E #x1E #xE0 #xF0 #xF9 #x7F #x3E #x7C
+ #xF8 #xE0 #xF8 #xF0 #xF0 #xF8 #x00 #x00 #x7F #x7F #x07 #x0F #x9F #xBF #x9E
+ #x1F #xFF #xFF #x0F #x1E #x3E #x3C #xF1 #xFB #x7F #x7F #xFE #xDE #xDF #x9F
+ #x1F #x3F #x3E #x3C #xF8 #xF8 #x00 #x00 #x03 #x03 #x07 #x07 #xFF #xFF #xC1
+ #xC0 #xF3 #xE7 #xF7 #xF3 #xC0 #xC0 #xC0 #xC0 #x1F #x1F #x1E #x3E #x3F #x1F
+ #x3E #x3E #x80 #x00 #x00 #x00 #x7C #x1F #x07 #x00 #x0F #xFF #xFE #x00 #x7C
+ #xF8 #xF0 #x00 #x1F #x0F #x0F #x00 #x7C #xF8 #xF8 #x00 #x3F #x3E #x1C #x00
+ #x0F #x0F #x0F #x00 #x7C #xFF #xFF #x00 #x00 #xF8 #xF8 #x00 #x07 #x0F #x0F
+ #x00 #x81 #xFF #xFF #x00 #xF3 #xE1 #x80 #x00 #xE0 #xFF #x7F #x00 #xFC #xF0
+ #xC0 #x00 #x3E #x7C #x7C #x00 #x00 #x00 #x00 #x00 #x00 #x88 #x16 #x36 #xD1
+ #xDB #xF2 #x3C #x8C #x92 #x3D #x5C #x58 #xC9 #x3E #x70 #x1D #x59 #x69 #x19
+ #x35 #xA8 #x14 #xAA #x75 #x95 #x99 #x34 #x6F #x15 #xFF #x97 #x4B #x90 #x17
+ #x10 #x39 #xF7 #xF6 #xA2 #x49 #x4E #x43 #x68 #xE0 #x8B #xF0 #xCE #x0C #x29
+ #xE8 #xB7 #x86 #x9A #x52 #x01 #x9D #x71 #x9C #xBD #x5D #x6D #x67 #x3F #x6B
+ #xB3 #x46 #x28 #xA5 #xC6 #xD3 #x27 #x61 #x18 #x66 #x6A #xBF #x0D #xF4 #x42
+ #x45 #x46 #x41 #x41 #x52 #x42 #x45 #x4B #x45 #x4B #x20 #x52 #x2D #x55 #x52
+ #x41 #x52 #x20 #x49 #x4E #x41 #x49 #x4C #x49 #x43 #x45 #x20 #x52 #x7C #x08
+ #x12 #xA3 #xA2 #x07 #x87 #x4B #x20 #x12 #x65 #xA8 #x16 #xA9 #x86 #xB1 #x68
+ #xA0 #x87 #x66 #x12 #xA1 #x30 #x3C #x12 #x85 #x12 #x64 #x1B #x07 #x06 #x6F
+ #x6E #x6E #xAE #xAF #x6F #xB2 #xAF #xB2 #xA8 #xAB #x6F #xAF #x86 #xAE #xA2
+ #xA2 #x12 #xAF #x13 #x12 #xA1 #x6E #xAF #xAF #xAD #x06 #x4C #x6E #xAF #xAF
+ #x12 #x7C #xAC #xA8 #x6A #x6E #x13 #xA0 #x2D #xA8 #x2B #xAC #x64 #xAC #x6D
+ #x87 #xBC #x60 #xB4 #x13 #x72 #x7C #xB5 #xAE #xAE #x7C #x7C #x65 #xA2 #x6C
+ #x64 #x85 #x80 #xB0 #x40 #x88 #x20 #x68 #xDE #x00 #x70 #xDE #x20 #x78 #x20
+ #x20 #x38 #x20 #xB0 #x90 #x20 #xB0 #xA0 #xE0 #xB0 #xC0 #x98 #xB6 #x48 #x80
+ #xE0 #x50 #x1E #x1E #x58 #x20 #xB8 #xE0 #x88 #xB0 #x10 #x20 #x00 #x10 #x20
+ #xE0 #x18 #xE0 #x18 #x00 #x18 #xE0 #x20 #xA8 #xE0 #x20 #x18 #xE0 #x00 #x20
+ #x18 #xD8 #xC8 #x18 #xE0 #x00 #xE0 #x40 #x28 #x28 #x28 #x18 #xE0 #x60 #x20
+ #x18 #xE0 #x00 #x00 #x08 #xE0 #x18 #x30 #xD0 #xD0 #xD0 #x20 #xE0 #xE8 #xFF
+ #x7F #xBF #x32 #xD0 #x00 #x00 #x00 #x9F #x63 #x79 #x42 #xB0 #x15 #xCB #x04
+ #xFF #x7F #x31 #x6E #x4A #x45 #x00 #x00 #xFF #x7F #xEF #x1B #x00 #x02 #x00
+ #x00 #xFF #x7F #x1F #x42 #xF2 #x1C #x00 #x00 #xFF #x7F #x94 #x52 #x4A #x29
+ #x00 #x00 #xFF #x7F #xFF #x03 #x2F #x01 #x00 #x00 #xFF #x7F #xEF #x03 #xD6
+ #x01 #x00 #x00 #xFF #x7F #xB5 #x42 #xC8 #x3D #x00 #x00 #x74 #x7E #xFF #x03
+ #x80 #x01 #x00 #x00 #xFF #x67 #xAC #x77 #x13 #x1A #x6B #x2D #xD6 #x7E #xFF
+ #x4B #x75 #x21 #x00 #x00 #xFF #x53 #x5F #x4A #x52 #x7E #x00 #x00 #xFF #x4F
+ #xD2 #x7E #x4C #x3A #xE0 #x1C #xED #x03 #xFF #x7F #x5F #x25 #x00 #x00 #x6A
+ #x03 #x1F #x02 #xFF #x03 #xFF #x7F #xFF #x7F #xDF #x01 #x12 #x01 #x00 #x00
+ #x1F #x23 #x5F #x03 #xF2 #x00 #x09 #x00 #xFF #x7F #xEA #x03 #x1F #x01 #x00
+ #x00 #x9F #x29 #x1A #x00 #x0C #x00 #x00 #x00 #xFF #x7F #x7F #x02 #x1F #x00
+ #x00 #x00 #xFF #x7F #xE0 #x03 #x06 #x02 #x20 #x01 #xFF #x7F #xEB #x7E #x1F
+ #x00 #x00 #x7C #xFF #x7F #xFF #x3F #x00 #x7E #x1F #x00 #xFF #x7F #xFF #x03
+ #x1F #x00 #x00 #x00 #xFF #x03 #x1F #x00 #x0C #x00 #x00 #x00 #xFF #x7F #x3F
+ #x03 #x93 #x01 #x00 #x00 #x00 #x00 #x00 #x42 #x7F #x03 #xFF #x7F #xFF #x7F
+ #x8C #x7E #x00 #x7C #x00 #x00 #xFF #x7F #xEF #x1B #x80 #x61 #x00 #x00 #xFF
+ #x7F #x00 #x7C #xE0 #x03 #x1F #x7C #x1F #x00 #xFF #x03 #x40 #x41 #x42 #x20
+ #x21 #x22 #x80 #x81 #x82 #x10 #x11 #x12 #x12 #xB0 #x79 #xB8 #xAD #x16 #x17
+ #x07 #xBA #x05 #x7C #x13 #x00 #x00 #x00 #x00)
+  "cgb bios as a list of bytes")
 
 (defun make-bios ()
+  "creates the bios array of memory for the gb based on *CGB-BIOS* parameter."
+  (make-array #x900 :initial-contents *cgb-bios*))
+(defun make-dmg-bios ()
   "creates the bios array of memory for the gb based on *DMG-BIOS* parameter."
+  (make-array #x100 :initial-contents *dmg-bios*))
+(defun make-cgb-bios ()
+  "creates the bios array of memory for the gb based on *CGB-BIOS* parameter."
   (make-array #x900 :initial-contents *cgb-bios*))
 
-(defun read-rom-data-from-file (filename)
+(defun read-bin-data-from-file (filename)
   "reads rom data from a file referenced by FILENAME as a list of bytes"
   (with-open-file (bin filename :element-type '(unsigned-byte 8) :if-does-not-exist nil)
     (if bin (loop for b = (read-byte bin nil) while b collect b))))
@@ -689,9 +657,6 @@
   "load CART into GB"
   (gb-reset gb)
   (setf (gb-cart gb) cart)
-  (if (cgb-p gb)
-      (replace (gb-bios gb) *cgb-bios*)
-      (replace (gb-bios gb) *dmg-bios*))
   nil)
 
 (defun unload-cart (gb)

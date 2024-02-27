@@ -16,7 +16,7 @@
   (input (make-gbinput))
   (stopped? nil :type boolean)
   (paused? nil :type boolean)
-  (bios (make-bios))
+  (bios (make-dmg-bios))
   (is-bios? t :type boolean)
   (div-clock 0 :type (unsigned-byte 8))
   (tima 0 :type (unsigned-byte 8))
@@ -27,6 +27,7 @@
   (zero-page (make-array #x100 :initial-element 0 :element-type '(unsigned-byte 8))))
 
 (defstruct (cgb (:include gb
+                 (bios (make-cgb-bios))
                  (int-ram (make-array #x8000 :initial-element 0 :element-type '(unsigned-byte 8)))
                  (ppu (make-cgbppu))))
   "defines a GameBoy Color system"

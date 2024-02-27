@@ -119,7 +119,7 @@
         (ppucram-index cram) (if (ppucram-auto-inc? cram) (+ (ppucram-index cram) 1) (ppucram-index cram))))
 
 (defun ppu-read-cram-data (cram)
-  (aref (ppucram-ram cram) (logand (ppu-cram-index cram) #x3f)))
+  (aref (ppucram-ram cram) (logand (ppucram-index cram) #x3f)))
 
 (defun ppu-write-lcdc (ppu val)
   "saves the lcdc byte as a ppulcdc struct in PPU based on VAL"
@@ -482,8 +482,8 @@
         (if (<= (- len transfer-bytes) 0)
             (setf (cgbppu-hdma-len ppu)  #x00
                   (cgbppu-vram-dma-type ppu) 0
-                  (cgbppu-hdma12 ppu) #xffff
-                  (cgbppu-hdma34 ppu) #xffff)
+                  (cgbppu-hdma12 ppu) #x0000
+                  (cgbppu-hdma34 ppu) #x0000)
             (setf (cgbppu-hdma-len ppu)  (- len transfer-bytes)
                   (cgbppu-hdma12 ppu) (+ start-src transfer-bytes)
                   (cgbppu-hdma34 ppu) (+ start-dest transfer-bytes)))))))
@@ -504,8 +504,8 @@
         (if (<= (- len transfer-bytes) 0)
             (setf (cgbppu-hdma-len ppu)  #x00
                   (cgbppu-vram-dma-type ppu) 0
-                  (cgbppu-hdma12 ppu) #xffff
-                  (cgbppu-hdma34 ppu) #xffff)
+                  (cgbppu-hdma12 ppu) #x0000
+                  (cgbppu-hdma34 ppu) #x0000)
             (setf (cgbppu-hdma-len ppu)  (- len transfer-bytes)
                   (cgbppu-hdma12 ppu) (+ start-src transfer-bytes)
                   (cgbppu-hdma34 ppu) (+ start-dest transfer-bytes)))))))
