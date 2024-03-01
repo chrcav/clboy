@@ -74,7 +74,7 @@
   (hdma34 #x0000 :type (unsigned-byte 16))
   (hdma-len #x000 :type (unsigned-byte 12))
   (vram-dma-type 0 :type (unsigned-byte 8))
-  (opri #x00 :type (unsigned-byte 8)))
+  (dmg-priority-mode? nil :type boolean))
 
 
 (defparameter *colors* #(#xff #x7f #xf7 #x5e #x8c #x31 #x00 #x00))
@@ -205,7 +205,7 @@
                  (#x69 (ppu-write-cram-data (cgbppu-bg-cram ppu) val))
                  (#x6a (ppu-write-cram-spec (cgbppu-obj-cram ppu) val))
                  (#x6b (ppu-write-cram-data (cgbppu-obj-cram ppu) val))
-                 (#x6c (setf (cgbppu-opri ppu) val)))))
+                 (#x6c (setf (cgbppu-dmg-priority-mode? ppu) (= (logand val #x01) #x01))))))
           (otherwise ())))))))
 
 (defun ppu-read-memory-at-addr (ppu addr)
@@ -240,7 +240,7 @@
                  (#x69 (ppu-read-cram-data (cgbppu-bg-cram ppu)))
                  (#x6a (ppu-read-cram-spec (cgbppu-obj-cram ppu)))
                  (#x6b (ppu-read-cram-data (cgbppu-obj-cram ppu)))
-                 (#x6c (cgbppu-opri ppu)))))
+                 (#x6c (if (cgbppu-dmg-priority-mode? ppu) #x01 #x00)))))
           (otherwise #xff)))))))
 
 (defun read-sprite (oam addr)
@@ -253,7 +253,7 @@
   (and (>= row (- (car sprite) +sprite-tile-max-height+))
        (< row (+ (- (car sprite) +sprite-tile-max-height+) sprite-height))))
 
-(defun render-sprites-on-scanline (row &key (cram nil) (palettes nil) (is-cgb? nil) (opri nil)
+(defun render-sprites-on-scanline (row &key (cram nil) (palettes nil) (is-cgb? nil) (cgb-priority? nil)
                                        (obj-enabled? nil) (sprite-height 8) (oam) (vram))
   "loops through oam and adds sprites to framebuffer that overlap the current scanline location."
   (let ((buffer (make-array +screen-pixel-width+ :initial-element nil)))
@@ -264,7 +264,7 @@
             when (sprite-overlaps-scanline? sprite row sprite-height)
             do (render-sprite-on-scanline buffer (- addr #xfe00)
                                           :cram cram
-                                          :opri opri
+                                          :cgb-priority? cgb-priority?
                                           :palette (if (= (logand (cadddr sprite) #x10) #x00)
                                                        (car palettes)
                                                        (cadr palettes))
@@ -297,8 +297,8 @@
 (defun calc-sprite-tile-no (sprite-height sprite-index)
   (if (= sprite-height +sprite-tile-max-height+) (logand sprite-index #xfe) sprite-index))
 
-(defun render-sprite-on-scanline (buffer pos
-                                         &key (cram nil) (opri nil) (palette 0) (is-cgb? nil)
+(defun render-sprite-on-scanline (buffer oam-pos
+                                         &key (cram nil) (cgb-priority? nil) (palette 0) (is-cgb? nil)
                                          (sprite-height 8) (vram)
                                          (sprite-index 0) (sprite-flags 0)
                                          (sprite-x 0) (sprite-y-offset 0))
@@ -316,8 +316,8 @@
                :start-x (- sprite-x 8)
                :xflip? (> (logand sprite-flags #x20) 0)
                :priority (- 1000
-                            (if (or (not is-cgb?) opri) sprite-x pos)
-                            (if (= (ash sprite-flags -7) 1) 1000 0))
+                            (if cgb-priority? oam-pos sprite-x)
+                            (if (= (logand sprite-flags #x80) #x80) 1000 0))
                :cram cram
                :palette (if is-cgb?
                             (logand sprite-flags #x7)
@@ -466,27 +466,20 @@
           do (write-memory-at-addr gb dest (read-memory-at-addr gb src)))
     (setf (gbppu-do-oam-dma ppu) #xff)))
 
-(defun maybe-do-gen-dma (ppu gb dots)
+(defun maybe-do-gen-dma (ppu gb)
   "checks for general purpose vram DMA and processes copying memory into VRAM"
   (when (= (cgbppu-vram-dma-type ppu) 1)
-    (let ((len (cgbppu-hdma-len ppu))
-          (transfer-bytes (* dots 2))
+    (let ((transfer-bytes (cgbppu-hdma-len ppu))
           (start-src (cgbppu-hdma12 ppu))
           (start-dest (cgbppu-hdma34 ppu)))
-      (when (> len 0)
-        (loop for i from 0 to (- transfer-bytes 1)
-              for src = (+ start-src i)
-              for dest = (+ start-dest i)
-              while (< i len)
-              do (ppu-write-memory-at-addr ppu dest (read-memory-at-addr gb src)))
-        (if (<= (- len transfer-bytes) 0)
-            (setf (cgbppu-hdma-len ppu)  #x00
-                  (cgbppu-vram-dma-type ppu) 0
-                  (cgbppu-hdma12 ppu) #x0000
-                  (cgbppu-hdma34 ppu) #x0000)
-            (setf (cgbppu-hdma-len ppu)  (- len transfer-bytes)
-                  (cgbppu-hdma12 ppu) (+ start-src transfer-bytes)
-                  (cgbppu-hdma34 ppu) (+ start-dest transfer-bytes)))))))
+      (loop for i from 0 to (- transfer-bytes 1)
+            for src = (+ start-src i)
+            for dest = (+ start-dest i)
+            do (ppu-write-memory-at-addr ppu dest (read-memory-at-addr gb src)))
+      (setf (cgbppu-hdma-len ppu)  #x00
+            (cgbppu-vram-dma-type ppu) 0
+            (cgbppu-hdma12 ppu) #x0000
+            (cgbppu-hdma34 ppu) #x0000))))
 
 (defun maybe-do-h-dma (ppu gb dots)
   "checks for hblank vram DMA and processes copying memory into VRAM"
@@ -567,7 +560,7 @@
                         (render-sprites-on-scanline row
                                                     :cram (if (cgbppu-p ppu) (ppucram-ram (cgbppu-obj-cram ppu)))
                                                     :is-cgb? (cgbppu-p ppu)
-                                                    :opri (and (cgbppu-p ppu) (cgbppu-opri ppu))
+                                                    :cgb-priority? (and (cgbppu-p ppu) (not (cgbppu-dmg-priority-mode? ppu)))
                                                     :palettes (list (gbppu-obj-palette0 ppu)
                                                                     (gbppu-obj-palette1 ppu))
                                                     :obj-enabled? (ppulcdc-obj-enabled? (gbppu-lcdc ppu))
@@ -652,7 +645,7 @@
   (when (gbppu-enabled? ppu)
     (incf (gbppu-dots ppu) dots)
     (maybe-do-oam-dma ppu gb dots)
-    (if (cgbppu-p ppu) (maybe-do-gen-dma ppu gb dots))
+    (if (cgbppu-p ppu) (maybe-do-gen-dma ppu gb))
     (check-ly-lyc ppu gb)
     (case (gbppu-mode ppu)
       ; in Hblank state
