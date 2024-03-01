@@ -256,30 +256,40 @@
 (defun render-sprites-on-scanline (row &key (cram nil) (palettes nil) (is-cgb? nil) (cgb-priority? nil)
                                        (obj-enabled? nil) (sprite-height 8) (oam) (vram))
   "loops through oam and adds sprites to framebuffer that overlap the current scanline location."
-  (let ((buffer (make-array +screen-pixel-width+ :initial-element nil)))
-    (when (and obj-enabled? (< row +screen-pixel-height+))
-      (loop for addr = #x00 then (+ addr 4)
-            while (< addr #xa0)
-            for sprite = (read-sprite oam addr)
-            when (sprite-overlaps-scanline? sprite row sprite-height)
-            do (render-sprite-on-scanline buffer (- addr #xfe00)
-                                          :cram cram
-                                          :cgb-priority? cgb-priority?
-                                          :palette (if (= (logand (cadddr sprite) #x10) #x00)
-                                                       (car palettes)
-                                                       (cadr palettes))
-                                          :is-cgb? is-cgb?
-                                          :sprite-height sprite-height
-                                          :vram vram
-                                          :sprite-index (caddr sprite)
-                                          :sprite-flags (cadddr sprite)
-                                          :sprite-x (cadr sprite)
-                                          :sprite-y-offset (calc-sprite-y-offset
-                                                             row
-                                                             (car sprite)
-                                                             (> (logand (cadddr sprite) #x40) 0)
-                                                             sprite-height))))
-    buffer))
+  (let ((buffer (make-list +screen-pixel-width+ :initial-element nil)))
+    (if (and obj-enabled? (< row +screen-pixel-height+))
+        (reduce #'(lambda (acc next)
+                  (if (null next) acc
+                  (map 'list
+                       #'(lambda (cur new)
+                           (if (null cur) new
+                               (if (and (not (null new))
+                                        (render-pixel? (cadr new) cur :priority (car new)))
+                                   new cur)))
+                       acc next)))
+              (loop for addr = #x00 then (+ addr 4)
+                    while (< addr #xa0)
+                    for sprite = (read-sprite oam addr)
+                    when (sprite-overlaps-scanline? sprite row sprite-height)
+                    collect (render-sprite-on-scanline addr
+                                                       :cram cram
+                                                       :cgb-priority? cgb-priority?
+                                                       :palette (if (= (logand (cadddr sprite) #x10) #x00)
+                                                                    (car palettes)
+                                                                    (cadr palettes))
+                                                       :is-cgb? is-cgb?
+                                                       :sprite-height sprite-height
+                                                       :vram vram
+                                                       :sprite-index (caddr sprite)
+                                                       :sprite-flags (cadddr sprite)
+                                                       :sprite-x (cadr sprite)
+                                                       :sprite-y-offset (calc-sprite-y-offset
+                                                                          row
+                                                                          (car sprite)
+                                                                          (> (logand (cadddr sprite) #x40) 0)
+                                                                          sprite-height)))
+              :initial-value buffer)
+        buffer)))
 
 (defun calc-sprite-y-offset (row sprite-y yflip? sprite-height)
   (let ((offset (+ (- row sprite-y) +sprite-tile-max-height+)))
@@ -297,7 +307,7 @@
 (defun calc-sprite-tile-no (sprite-height sprite-index)
   (if (= sprite-height +sprite-tile-max-height+) (logand sprite-index #xfe) sprite-index))
 
-(defun render-sprite-on-scanline (buffer oam-pos
+(defun render-sprite-on-scanline (oam-pos
                                          &key (cram nil) (cgb-priority? nil) (palette 0) (is-cgb? nil)
                                          (sprite-height 8) (vram)
                                          (sprite-index 0) (sprite-flags 0)
@@ -305,24 +315,25 @@
   "adds a row of pixels from the visible portion of a sprite corresponding to the scanline
   location."
   (when (< (- sprite-x 8) +screen-pixel-width+)
-    (replace buffer
-             (render-tile-line
-               (get-color-bytes vram (calc-sprite-tile-addr
-                                       (calc-sprite-tile-no sprite-height
-                                                            sprite-index)
-                                       sprite-flags
-                                       sprite-y-offset
-                                       :is-cgb? is-cgb?))
-               :start-x (- sprite-x 8)
-               :xflip? (> (logand sprite-flags #x20) 0)
-               :priority (- 1000
-                            (if cgb-priority? oam-pos sprite-x)
-                            (if (= (logand sprite-flags #x80) #x80) 1000 0))
-               :cram cram
-               :palette (if is-cgb?
-                            (logand sprite-flags #x7)
-                            palette))
-             :start1 (if (< (- sprite-x 8) 0) 0 (- sprite-x 8)))))
+    (let ((new-buffer (make-array +screen-pixel-width+ :initial-element nil)))
+      (replace new-buffer
+               (render-tile-line
+                 (get-color-bytes vram (calc-sprite-tile-addr
+                                         (calc-sprite-tile-no sprite-height
+                                                              sprite-index)
+                                         sprite-flags
+                                         sprite-y-offset
+                                         :is-cgb? is-cgb?))
+                 :start-x (- sprite-x 8)
+                 :xflip? (> (logand sprite-flags #x20) 0)
+                 :priority (- 1000
+                              (if cgb-priority? oam-pos sprite-x)
+                              (if (= (logand sprite-flags #x80) #x80) 1000 0))
+                 :cram cram
+                 :palette (if is-cgb?
+                              (logand sprite-flags #x7)
+                              palette))
+               :start1 (if (< (- sprite-x 8) 0) 0 (- sprite-x 8))))))
 
 (defun get-color-bytes (vram tile-row-addr)
   (list (aref vram tile-row-addr)
@@ -530,7 +541,8 @@
                    (map 'list
                         #'(lambda (bg win obj)
                             (if (and (not (null obj))
-                                     (render-pixel? (cadr obj) bg :priority (car obj)))
+                                     (render-pixel? (cadr obj) bg :priority (car obj))
+                                     (render-pixel? (cadr obj) win :priority (car obj)))
                                 (caddr obj)
                                 (if (and (not (null win))
                                          (render-pixel? (cadr win) bg :priority (car win) :is-background? t))
