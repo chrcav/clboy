@@ -82,13 +82,13 @@
 (defun ppu-cycles-per-dot (cpu-speed) (floor cpu-speed +dots-per-second+))
 
 (defun ppu-get-palette-color (&key (cram *colors*) (palette 0) (index 0))
-  (ppu-get-cram-palette-color cram palette index))
+  (ppu-get-cram-palette-color cram (+ (* palette 8) (* index 2))))
 
-(defun ppu-get-cram-palette-color (cram palette index)
+(defun ppu-get-cram-palette-color (cram addr)
   (loop for i from 0 to 2
         for color = (logior
-                      (aref cram (+ (* palette 8) (* index 2)))
-                      (ash (aref cram (+ (* palette 8) (* index 2) 1)) 8))
+                      (aref cram addr)
+                      (ash (aref cram (+ addr 1)) 8))
         then (ash color -5)
         collect (round (* (/ 255 31) (logand color #x1f)))))
 
@@ -227,7 +227,7 @@
           (#x46 (gbppu-do-oam-dma ppu))
           (#x47 (gbppu-bg-palette ppu))
           (#x48 (gbppu-obj-palette0 ppu))
-          (#x48 (gbppu-obj-palette1 ppu))
+          (#x49 (gbppu-obj-palette1 ppu))
           (#x4a (gbppu-wy ppu))
           (#x4b (gbppu-wx ppu))
           (#x4f (logior (gbppu-vram-bank ppu) #xfe))
