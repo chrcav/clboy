@@ -2,7 +2,7 @@
 (defsystem "clboy"
            :description "clboy: just another GB emulator"
            :version "0.0.1"
-           :author "Christopher Cavanaugh <chriswcav AT gmail DOT com>"
+           :author "Christopher Cavanaugh <christopher AT chrcav DOT dev>"
            :license "MIT"
            :depends-on (:sdl2
                         :static-vectors)
@@ -23,7 +23,7 @@
 (defsystem "clboy/test"
            :description "tests for clboy system"
            :version "0.0.1"
-           :author "Christopher Cavanaugh <chriswcav AT gmail DOT com>"
+           :author "Christopher Cavanaugh <christopher AT chrcav DOT dev>"
            :license "MIT"
            :depends-on (:clboy
                         :try)
