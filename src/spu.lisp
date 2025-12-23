@@ -3,7 +3,7 @@
 (in-package :clboy)
 
 (defconstant +sample-rate+ 44100)
-(defconstant +audio-buffer-size+ 64)
+(defconstant +audio-buffer-size+ 1024)
 (defconstant +audio-normalize-factor+ 0.1)
 
 (defun cycles-per-sample (cpu-speed) (floor cpu-speed +sample-rate+))
@@ -51,6 +51,7 @@
   (shadow-freq 0)
   (lfsr 0 :type (unsigned-byte 15))
   (ena? nil :type boolean)
+  (muted? nil :type boolean)
   (dac-ena? t :type boolean))
 
 (defun gbspu-reset (spu)
@@ -76,6 +77,18 @@
      (aref (gbspu-wave-ram spu) (logand addr #xf)))
     ((#x76 #x77) #xff)
     (otherwise #xff)))
+(defun gbspu-toggle-audio-channel (spu ch)
+  "toggles audio change CH on and off"
+  (case ch
+    (1
+     (setf (channel-muted? (gbspu-ch1 spu)) (not (channel-muted? (gbspu-ch1 spu)))))
+    (2
+     (setf (channel-muted? (gbspu-ch2 spu)) (not (channel-muted? (gbspu-ch2 spu)))))
+    (3
+     (setf (channel-muted? (gbspu-ch3 spu)) (not (channel-muted? (gbspu-ch3 spu)))))
+    (4
+     (setf (channel-muted? (gbspu-ch4 spu)) (not (channel-muted? (gbspu-ch4 spu)))))
+  ))
 
 (defun spu-write-memory-at-addr (spu addr val)
   "writes the available register data for SPU at ADDR to VAL"
@@ -177,6 +190,8 @@
 
 (defun set-channel-r2 (channel val)
   (setf (channel-r2 channel) val
+        (channel-dac-ena? channel) (> (logand val #xf8) 0)
+        (channel-ena? channel) (if (> (logand val #xf8) 0) (channel-ena? channel) nil)
         (channel-vol channel) (logand (ash val -4) #xf)
         (channel-env-tick channel) (logand val #x7)))
 
@@ -209,7 +224,8 @@
     (setf (channel-sweep-period channel) (logand (ash (channel-r0 channel) -4) #x7))
     (if (= (channel-sweep-period channel) 0) (setf (channel-sweep-period channel) 8))
     (setf (channel-sweep-ena? channel) (> (logand (channel-r0 channel) #x77) 0))
-    (sweep-freq-calc channel)))
+    (when (> (logand (channel-r0 channel) #x7) 0)
+      (sweep-freq-calc channel))))
 
 (defun read-sound-vol (spu)
   (+ (ash (gbspu-left-vol spu) 4)
@@ -301,7 +317,7 @@
         (step-channel-len channel))
 
       (when (and (= frame-sequencer 7)
-                 (> (logand (channel-r2 channel) 7) 0))
+                 (> (logand (channel-r2 channel) #x7) 0))
         (step-channel-env channel))))
 
 (defun step-wave-channel (channel frame-sequencer)
@@ -320,7 +336,7 @@
         (step-channel-len channel))
 
       (when (and (= frame-sequencer 7)
-                 (> (logand (channel-r2 channel) 7) 0))
+                 (> (logand (channel-r2 channel) #x7) 0))
         (step-channel-env channel))))
 
 (defun step-wave-channel-seq (channel spu cycles)
@@ -344,8 +360,10 @@
            (- (channel-vol channel))))))
 
 (defun channel-dac (channel out)
-  (if (channel-ena? channel)
-      (coerce (/ out 100) 'single-float)
+  (if (and (channel-dac-ena? channel) (not (channel-muted? channel)))
+      (if (channel-ena? channel)
+          (coerce (/ out 100) 'single-float)
+          0.0)
       0.0))
 
 (defun step-channel-seq (channel cycles)
@@ -397,7 +415,7 @@
     (when (= (channel-sweep-period channel) 0)
       (setf (channel-sweep-period channel) (logand (ash (channel-r0 channel) -4) #x7))
       (if (= (channel-sweep-period channel) 0) (setf (channel-sweep-period channel) 8))
-      (when (and (> (channel-sweep-period channel) 0)
+      (when (and (> (logand (channel-r0 channel) #x70) 0)
                  (channel-sweep-ena? channel))
           (let ((new-freq (sweep-freq-calc channel)))
             (when (and (< new-freq 2048) (> (logand (channel-r0 channel) #x7) 0))
