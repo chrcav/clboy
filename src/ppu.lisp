@@ -74,6 +74,7 @@
   (hdma34 #x0000 :type (unsigned-byte 16))
   (hdma-len #x000 :type (unsigned-byte 12))
   (vram-dma-type 0 :type (unsigned-byte 8))
+  (dmg-compat? nil :type boolean)
   (dmg-priority-mode? nil :type boolean))
 
 
@@ -112,7 +113,8 @@
 
 (defun ppu-read-cram-spec (cram)
   (logior (if (ppucram-auto-inc? cram) #x80 #x0)
-          (logand (ppucram-index cram) #x3f)))
+          (logand (ppucram-index cram) #x3f)
+          #x40))
 
 (defun ppu-write-cram-data (cram val)
   (setf (aref (ppucram-ram cram) (logand (ppucram-index cram) #x3f)) val
@@ -254,7 +256,7 @@
        (< row (+ (- (car sprite) +sprite-tile-max-height+) sprite-height))))
 
 (defun render-sprites-on-scanline (row &key (cram nil) (palettes nil) (is-cgb? nil) (cgb-priority? nil)
-                                       (obj-enabled? nil) (sprite-height 8) (oam) (vram))
+                                       (is-dmg-compat? nil) (obj-enabled? nil) (sprite-height 8) (oam) (vram))
   "loops through oam and adds sprites to framebuffer that overlap the current scanline location."
   (let ((buffer (make-list +screen-pixel-width+ :initial-element nil)))
     (if (and obj-enabled? (< row +screen-pixel-height+))
@@ -278,6 +280,7 @@
                                                                     (car palettes)
                                                                     (cadr palettes))
                                                        :is-cgb? is-cgb?
+                                                       :is-dmg-compat? is-dmg-compat?
                                                        :sprite-height sprite-height
                                                        :vram vram
                                                        :sprite-index (caddr sprite)
@@ -309,7 +312,7 @@
 
 (defun render-sprite-on-scanline (oam-pos
                                          &key (cram nil) (cgb-priority? nil) (palette 0) (is-cgb? nil)
-                                         (sprite-height 8) (vram)
+                                         (sprite-height 8) (vram) (is-dmg-compat? nil)
                                          (sprite-index 0) (sprite-flags 0)
                                          (sprite-x 0) (sprite-y-offset 0))
   "adds a row of pixels from the visible portion of a sprite corresponding to the scanline
@@ -331,7 +334,9 @@
                               (if (= (logand sprite-flags #x80) #x80) 1000 0))
                  :cram cram
                  :palette (if is-cgb?
-                              (logand sprite-flags #x7)
+                              (if is-dmg-compat?
+                                  (if (> (logand sprite-flags #x10) 0) 1 0)
+                                  (logand sprite-flags #x7))
                               palette))
                :start1 (if (< (- sprite-x 8) 0) 0 (- sprite-x 8))))))
 
@@ -572,6 +577,7 @@
                         (render-sprites-on-scanline row
                                                     :cram (if (cgbppu-p ppu) (ppucram-ram (cgbppu-obj-cram ppu)))
                                                     :is-cgb? (cgbppu-p ppu)
+                                                    :is-dmg-compat? (cgbppu-dmg-compat? ppu)
                                                     :cgb-priority? (and (cgbppu-p ppu) (not (cgbppu-dmg-priority-mode? ppu)))
                                                     :palettes (list (gbppu-obj-palette0 ppu)
                                                                     (gbppu-obj-palette1 ppu))

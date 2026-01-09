@@ -139,7 +139,7 @@
      (aref (gbcart-rom cart) (+ (* (gbcart-rombank cart) #x4000) (logand addr #x3fff))))
     ((#xa000 #xb000)
      (if (gbcart-ramon cart)
-       (aref (gbcart-ram cart) (+ (* (if (= (gbcart-mode cart) 1) (gbcart-rambank cart) #x2000) (logand addr #x1fff))))
+       (aref (gbcart-ram cart) (+ (* (if (= (gbcart-mode cart) 1) (gbcart-rambank cart) 0) #x2000) (logand addr #x1fff)))
        #xff))))
 
 (defun cart-mbc1-write (cart addr val)

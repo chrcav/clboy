@@ -53,6 +53,7 @@
           (#x40
            (case (logand addr #x000f)
              ((#x0 #x1 #x2 #x3 #x4 #x5 #x6 #x7 #x8 #x9 #xa #xb #xf) (ppu-write-memory-at-addr (gb-ppu gb) addr val))
+             (#xc (if (cgb-p gb) (setf (cgbppu-dmg-compat? (cgb-ppu gb)) (= (logand val #x04) #x04))))
              (#xd (if (cgb-p gb) (setf (cgb-is-speed-armed? gb) (= (logand val #x01) #x01))))))
           (#x50
            (case (logand addr #x000f)
@@ -106,6 +107,7 @@
             (#x40
               (case (logand addr #x000f)
                 ((#x0 #x1 #x2 #x3 #x4 #x5 #x6 #x7 #x8 #x9 #xa #xb #xf) (ppu-read-memory-at-addr (gb-ppu gb) addr))
+                (#xc (if (cgb-p gb) (if (cgbppu-dmg-compat? (cgb-ppu gb)) #x04 0)))
                 (#xd (if (cgb-p gb) (logior (if (cgb-is-speed-armed? gb) #x01 #x00) (if (cgb-is-double-speed? gb) #x80 #x00)) #x00))
                 (otherwise #xff)))
             (#x50
@@ -146,19 +148,19 @@
 (defun handle-interrupts (cpu gb)
   "handles interrupts that are enabled and active based on registers at #xff0f and #xffff. Interrupts
   are passed to the CPU to execute a call like instruction"
-  ; VBLANK interupt
+  ; VBLANK interrupt
   (if (= (logand (read-memory-at-addr gb #xffff) (read-memory-at-addr gb #xff0f) #x01) #x01)
     (do-interrupt cpu gb 0)
-  ; LCDC Status interupt
+  ; LCDC Status interrupt
   (if (= (logand (read-memory-at-addr gb #xffff) (read-memory-at-addr gb #xff0f) #x02) #x02)
     (do-interrupt cpu gb 1)
-  ; Timer interupt
+  ; Timer interrupt
   (if (= (logand (read-memory-at-addr gb #xffff) (read-memory-at-addr gb #xff0f) #x04) #x04)
     (do-interrupt cpu gb 2)
-  ; Serial Transfer interupt
+  ; Serial Transfer interrupt
   (if (= (logand (read-memory-at-addr gb #xffff) (read-memory-at-addr gb #xff0f) #x08) #x08)
     (do-interrupt cpu gb 3)
-  ; Hi-Lo of P10-P13 interupt
+  ; Hi-Lo of P10-P13 interrupt
   (if (= (logand (read-memory-at-addr gb #xffff) (read-memory-at-addr gb #xff0f) #x10) #x10)
     (do-interrupt cpu gb 4)))))))
 
@@ -591,7 +593,7 @@
                       (* (/ (- *width* +screen-pixel-width+) 2) *scale*)
                       (* (/ (- *height* +screen-pixel-height+) 2) *scale*)
                       (* +screen-pixel-width+ *scale*) (* +screen-pixel-height+ *scale*)))
-              (audio-device (sdl2::open-audio-device +sample-rate+ :f32 2 (floor +audio-buffer-size+ 2)))
+              (audio-device (sdl2::open-audio-device +sample-rate+ :f32 2 1024))
               (last-frame-time (get-internal-real-time)))
           (loop for c from 0 to (- (sdl2:joystick-count) 1) do
                 (when (sdl2:game-controller-p c)
